@@ -189,3 +189,14 @@ MACHINE_START(MSM7X30_FLUID, "QCT MSM7X30 FLUID")
 	.init_late = msm7x30_init_late,
 	.init_time	= msm7x30_timer_init,
 MACHINE_END
+
+MACHINE_START(SPADE, "spade")
+	.atag_offset = 0x100,
+	.fixup = msm7x30_fixup,
+	.reserve = msm7x30_reserve,
+	.map_io = msm7x30_map_io,
+	.init_irq = msm7x30_init_irq,
+	.init_machine = msm7x30_init,
+	.init_late = msm7x30_init_late,
+	.init_time	= msm7x30_timer_init,
+MACHINE_END
