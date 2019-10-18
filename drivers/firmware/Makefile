@@ -31,4 +31,5 @@ obj-$(CONFIG_EFI)		+= efi/
 obj-$(CONFIG_UEFI_CPER)		+= efi/
 obj-y				+= imx/
 obj-y				+= tegra/
+obj-y				+= xilinx/
 obj-$(CONFIG_ROCKCHIP_SIP)	+= rockchip_sip.o
