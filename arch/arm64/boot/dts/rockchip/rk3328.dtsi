@@ -300,6 +300,12 @@
 			status = "disabled";
 		};
 
+		grf_gpio: grf-gpio {
+			compatible = "rockchip,rk3328-grf-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+		};
+
 		power: power-controller {
 			compatible = "rockchip,rk3328-power-controller";
 			#power-domain-cells = <1>;
@@ -337,7 +343,6 @@
 			mode-loader = <BOOT_BL_DOWNLOAD>;
 			mode-ums = <BOOT_UMS>;
 		};
-
 	};
 
 	uart0: serial@ff110000 {
