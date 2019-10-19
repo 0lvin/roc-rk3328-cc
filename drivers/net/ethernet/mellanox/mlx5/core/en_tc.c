@@ -870,9 +870,9 @@ mlx5e_tc_offload_to_slow_path(struct mlx5_eswitch *esw,
 	struct mlx5_flow_handle *rule;
 
 	memcpy(slow_attr, flow->esw_attr, sizeof(*slow_attr));
-	slow_attr->action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
-	slow_attr->mirror_count = 0,
-	slow_attr->dest_chain = FDB_SLOW_PATH_CHAIN,
+	slow_attr->action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
+	slow_attr->mirror_count = 0;
+	slow_attr->dest_chain = FDB_SLOW_PATH_CHAIN;
 
 	rule = mlx5e_tc_offload_fdb_rules(esw, flow, spec, slow_attr);
 	if (!IS_ERR(rule))
@@ -887,6 +887,9 @@ mlx5e_tc_unoffload_from_slow_path(struct mlx5_eswitch *esw,
 				  struct mlx5_esw_flow_attr *slow_attr)
 {
 	memcpy(slow_attr, flow->esw_attr, sizeof(*slow_attr));
+	slow_attr->action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
+	slow_attr->mirror_count = 0;
+	slow_attr->dest_chain = FDB_SLOW_PATH_CHAIN;
 	mlx5e_tc_unoffload_fdb_rules(esw, flow, slow_attr);
 	flow->flags &= ~MLX5E_TC_FLOW_SLOW;
 }
@@ -907,11 +910,10 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 	struct mlx5e_priv *out_priv;
 	int err = 0, encap_err = 0;
 
-	/* if prios are not supported, keep the old behaviour of using same prio
-	 * for all offloaded rules.
-	 */
-	if (!mlx5_eswitch_prios_supported(esw))
-		attr->prio = 1;
+	if (!mlx5_eswitch_prios_supported(esw) && attr->prio != 1) {
+		NL_SET_ERR_MSG(extack, "E-switch priorities unsupported, upgrade FW");
+		return -EOPNOTSUPP;
+	}
 
 	if (attr->chain > max_chain) {
 		NL_SET_ERR_MSG(extack, "Requested chain is out of supported range");
@@ -1094,10 +1096,9 @@ void mlx5e_tc_encap_flows_del(struct mlx5e_priv *priv,
 		flow->rule[0] = rule;
 	}
 
-	if (e->flags & MLX5_ENCAP_ENTRY_VALID) {
-		e->flags &= ~MLX5_ENCAP_ENTRY_VALID;
-		mlx5_packet_reformat_dealloc(priv->mdev, e->encap_id);
-	}
+	/* we know that the encap is valid */
+	e->flags &= ~MLX5_ENCAP_ENTRY_VALID;
+	mlx5_packet_reformat_dealloc(priv->mdev, e->encap_id);
 }
 
 static struct mlx5_fc *mlx5e_tc_get_counter(struct mlx5e_tc_flow *flow)
@@ -1447,31 +1448,21 @@ static int __parse_cls_flower(struct mlx5e_priv *priv,
 					 inner_headers);
 	}
 
-	if (dissector_uses_key(f->dissector, FLOW_DISSECTOR_KEY_ETH_ADDRS)) {
-		struct flow_dissector_key_eth_addrs *key =
+	if (dissector_uses_key(f->dissector, FLOW_DISSECTOR_KEY_BASIC)) {
+		struct flow_dissector_key_basic *key =
 			skb_flow_dissector_target(f->dissector,
-						  FLOW_DISSECTOR_KEY_ETH_ADDRS,
+						  FLOW_DISSECTOR_KEY_BASIC,
 						  f->key);
-		struct flow_dissector_key_eth_addrs *mask =
+		struct flow_dissector_key_basic *mask =
 			skb_flow_dissector_target(f->dissector,
-						  FLOW_DISSECTOR_KEY_ETH_ADDRS,
+						  FLOW_DISSECTOR_KEY_BASIC,
 						  f->mask);
+		MLX5_SET(fte_match_set_lyr_2_4, headers_c, ethertype,
+			 ntohs(mask->n_proto));
+		MLX5_SET(fte_match_set_lyr_2_4, headers_v, ethertype,
+			 ntohs(key->n_proto));
 
-		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_c,
-					     dmac_47_16),
-				mask->dst);
-		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_v,
-					     dmac_47_16),
-				key->dst);
-
-		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_c,
-					     smac_47_16),
-				mask->src);
-		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_v,
-					     smac_47_16),
-				key->src);
-
-		if (!is_zero_ether_addr(mask->src) || !is_zero_ether_addr(mask->dst))
+		if (mask->n_proto)
 			*match_level = MLX5_MATCH_L2;
 	}
 
@@ -1505,9 +1496,10 @@ static int __parse_cls_flower(struct mlx5e_priv *priv,
 
 			*match_level = MLX5_MATCH_L2;
 		}
-	} else {
+	} else if (*match_level != MLX5_MATCH_NONE) {
 		MLX5_SET(fte_match_set_lyr_2_4, headers_c, svlan_tag, 1);
 		MLX5_SET(fte_match_set_lyr_2_4, headers_c, cvlan_tag, 1);
+		*match_level = MLX5_MATCH_L2;
 	}
 
 	if (dissector_uses_key(f->dissector, FLOW_DISSECTOR_KEY_CVLAN)) {
@@ -1545,21 +1537,31 @@ static int __parse_cls_flower(struct mlx5e_priv *priv,
 		}
 	}
 
-	if (dissector_uses_key(f->dissector, FLOW_DISSECTOR_KEY_BASIC)) {
-		struct flow_dissector_key_basic *key =
+	if (dissector_uses_key(f->dissector, FLOW_DISSECTOR_KEY_ETH_ADDRS)) {
+		struct flow_dissector_key_eth_addrs *key =
 			skb_flow_dissector_target(f->dissector,
-						  FLOW_DISSECTOR_KEY_BASIC,
+						  FLOW_DISSECTOR_KEY_ETH_ADDRS,
 						  f->key);
-		struct flow_dissector_key_basic *mask =
+		struct flow_dissector_key_eth_addrs *mask =
 			skb_flow_dissector_target(f->dissector,
-						  FLOW_DISSECTOR_KEY_BASIC,
+						  FLOW_DISSECTOR_KEY_ETH_ADDRS,
 						  f->mask);
-		MLX5_SET(fte_match_set_lyr_2_4, headers_c, ethertype,
-			 ntohs(mask->n_proto));
-		MLX5_SET(fte_match_set_lyr_2_4, headers_v, ethertype,
-			 ntohs(key->n_proto));
 
-		if (mask->n_proto)
+		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_c,
+					     dmac_47_16),
+				mask->dst);
+		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_v,
+					     dmac_47_16),
+				key->dst);
+
+		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_c,
+					     smac_47_16),
+				mask->src);
+		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_v,
+					     smac_47_16),
+				key->src);
+
+		if (!is_zero_ether_addr(mask->src) || !is_zero_ether_addr(mask->dst))
 			*match_level = MLX5_MATCH_L2;
 	}
 
@@ -1586,10 +1588,10 @@ static int __parse_cls_flower(struct mlx5e_priv *priv,
 
 			/* the HW doesn't need L3 inline to match on frag=no */
 			if (!(key->flags & FLOW_DIS_IS_FRAGMENT))
-				*match_level = MLX5_INLINE_MODE_L2;
+				*match_level = MLX5_MATCH_L2;
 	/* ***  L2 attributes parsing up to here *** */
 			else
-				*match_level = MLX5_INLINE_MODE_IP;
+				*match_level = MLX5_MATCH_L3;
 		}
 	}
 
@@ -2965,8 +2967,7 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv, struct tcf_exts *exts,
 				NL_SET_ERR_MSG(extack, "Requested destination chain is out of supported range");
 				return -EOPNOTSUPP;
 			}
-			action |= MLX5_FLOW_CONTEXT_ACTION_FWD_DEST |
-				  MLX5_FLOW_CONTEXT_ACTION_COUNT;
+			action |= MLX5_FLOW_CONTEXT_ACTION_COUNT;
 			attr->dest_chain = dest_chain;
 
 			continue;
@@ -2979,7 +2980,15 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv, struct tcf_exts *exts,
 	if (!actions_match_supported(priv, exts, parse_attr, flow, extack))
 		return -EOPNOTSUPP;
 
-	if (attr->out_count > 1 && !mlx5_esw_has_fwd_fdb(priv->mdev)) {
+	if (attr->dest_chain) {
+		if (attr->action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) {
+			NL_SET_ERR_MSG(extack, "Mirroring goto chain rules isn't supported");
+			return -EOPNOTSUPP;
+		}
+		attr->action |= MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
+	}
+
+	if (attr->mirror_count > 0 && !mlx5_esw_has_fwd_fdb(priv->mdev)) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "current firmware doesn't support split rule for port mirroring");
 		netdev_warn_once(priv->netdev, "current firmware doesn't support split rule for port mirroring\n");

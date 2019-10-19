@@ -137,7 +137,7 @@ reset_coalesce:
 	return rc;
 }
 
-#define BNXT_NUM_STATS	21
+#define BNXT_NUM_STATS	22
 
 #define BNXT_RX_STATS_ENTRY(counter)	\
 	{ BNXT_RX_STATS_OFFSET(counter), __stringify(counter) }
@@ -384,6 +384,7 @@ static void bnxt_get_ethtool_stats(struct net_device *dev,
 		for (k = 0; k < stat_fields; j++, k++)
 			buf[j] = le64_to_cpu(hw_stats[k]);
 		buf[j++] = cpr->rx_l4_csum_errors;
+		buf[j++] = cpr->missed_irqs;
 
 		bnxt_sw_func_stats[RX_TOTAL_DISCARDS].counter +=
 			le64_to_cpu(cpr->hw_stats->rx_discard_pkts);
@@ -467,6 +468,8 @@ static void bnxt_get_strings(struct net_device *dev, u32 stringset, u8 *buf)
 			sprintf(buf, "[%d]: tpa_aborts", i);
 			buf += ETH_GSTRING_LEN;
 			sprintf(buf, "[%d]: rx_l4_csum_errors", i);
+			buf += ETH_GSTRING_LEN;
+			sprintf(buf, "[%d]: missed_irqs", i);
 			buf += ETH_GSTRING_LEN;
 		}
 		for (i = 0; i < BNXT_NUM_SW_FUNC_STATS; i++) {
@@ -2569,6 +2572,7 @@ static int bnxt_poll_loopback(struct bnxt *bp, struct bnxt_cp_ring_info *cpr,
 static int bnxt_run_loopback(struct bnxt *bp)
 {
 	struct bnxt_tx_ring_info *txr = &bp->tx_ring[0];
+	struct bnxt_rx_ring_info *rxr = &bp->rx_ring[0];
 	struct bnxt_cp_ring_info *cpr;
 	int pkt_size, i = 0;
 	struct sk_buff *skb;
@@ -2576,7 +2580,9 @@ static int bnxt_run_loopback(struct bnxt *bp)
 	u8 *data;
 	int rc;
 
-	cpr = &txr->bnapi->cp_ring;
+	cpr = &rxr->bnapi->cp_ring;
+	if (bp->flags & BNXT_FLAG_CHIP_P5)
+		cpr = cpr->cp_ring_arr[BNXT_RX_HDL];
 	pkt_size = min(bp->dev->mtu + ETH_HLEN, bp->rx_copy_thresh);
 	skb = netdev_alloc_skb(bp->dev, pkt_size);
 	if (!skb)
@@ -2942,8 +2948,8 @@ bnxt_fill_coredump_record(struct bnxt *bp, struct bnxt_coredump_record *record,
 	record->asic_state = 0;
 	strlcpy(record->system_name, utsname()->nodename,
 		sizeof(record->system_name));
-	record->year = cpu_to_le16(tm.tm_year);
-	record->month = cpu_to_le16(tm.tm_mon);
+	record->year = cpu_to_le16(tm.tm_year + 1900);
+	record->month = cpu_to_le16(tm.tm_mon + 1);
 	record->day = cpu_to_le16(tm.tm_mday);
 	record->hour = cpu_to_le16(tm.tm_hour);
 	record->minute = cpu_to_le16(tm.tm_min);

@@ -843,8 +843,7 @@ static int mlx5e_get_link_ksettings(struct net_device *netdev,
 	ethtool_link_ksettings_add_link_mode(link_ksettings, supported,
 					     Autoneg);
 
-	err = get_fec_supported_advertised(mdev, link_ksettings);
-	if (err)
+	if (get_fec_supported_advertised(mdev, link_ksettings))
 		netdev_dbg(netdev, "%s: FEC caps query failed: %d\n",
 			   __func__, err);
 
@@ -1191,11 +1190,6 @@ int mlx5e_ethtool_get_ts_info(struct mlx5e_priv *priv,
 			      struct ethtool_ts_info *info)
 {
 	struct mlx5_core_dev *mdev = priv->mdev;
-	int ret;
-
-	ret = ethtool_op_get_ts_info(priv->netdev, info);
-	if (ret)
-		return ret;
 
 	info->phc_index = mlx5_clock_get_ptp_index(mdev);
 
@@ -1203,9 +1197,9 @@ int mlx5e_ethtool_get_ts_info(struct mlx5e_priv *priv,
 	    info->phc_index == -1)
 		return 0;
 
-	info->so_timestamping |= SOF_TIMESTAMPING_TX_HARDWARE |
-				 SOF_TIMESTAMPING_RX_HARDWARE |
-				 SOF_TIMESTAMPING_RAW_HARDWARE;
+	info->so_timestamping = SOF_TIMESTAMPING_TX_HARDWARE |
+				SOF_TIMESTAMPING_RX_HARDWARE |
+				SOF_TIMESTAMPING_RAW_HARDWARE;
 
 	info->tx_types = BIT(HWTSTAMP_TX_OFF) |
 			 BIT(HWTSTAMP_TX_ON);
