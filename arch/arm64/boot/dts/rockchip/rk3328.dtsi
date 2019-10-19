@@ -186,6 +186,12 @@
 		};
 	};
 
+	display_subsystem: display-subsystem {
+		compatible = "rockchip,display-subsystem";
+		ports = <&vop_out>;
+		status = "disabled";
+	};
+
 	psci {
 		compatible = "arm,psci-1.0", "arm,psci-0.2";
 		method = "smc";
@@ -997,7 +1003,7 @@
 			hdmi_in: port {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				hdmi_in_vop: endpoint@0 {
+				hdmi_in_vop: endpoint {
 					reg = <0>;
 					remote-endpoint = <&vop_out_hdmi>;
 				};
@@ -1029,12 +1035,6 @@
 				};
 			};
 		};
-	};
-
-	display_subsystem: display-subsystem {
-		compatible = "rockchip,display-subsystem";
-		ports = <&vop_out>;
-		status = "disabled";
 	};
 
 	codec: codec@ff410000 {
