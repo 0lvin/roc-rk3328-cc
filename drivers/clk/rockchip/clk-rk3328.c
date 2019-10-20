@@ -885,30 +885,6 @@ static const char *const rk3328_critical_clocks[] __initconst = {
 	"pclk_phy_niu",
 };
 
-static void __iomem *rk3328_cru_base;
-
-void rk3328_dump_cru(void)
-{
-	if (rk3328_cru_base) {
-		pr_warn("CRU:\n");
-		print_hex_dump(KERN_WARNING, "", DUMP_PREFIX_OFFSET,
-			       32, 4, rk3328_cru_base,
-			       0x400, false);
-	}
-}
-EXPORT_SYMBOL_GPL(rk3328_dump_cru);
-
-static int rk3328_clk_panic(struct notifier_block *this,
-			    unsigned long ev, void *ptr)
-{
-	rk3328_dump_cru();
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block rk3328_clk_panic_block = {
-	.notifier_call = rk3328_clk_panic,
-};
-
 static void __init rk3328_clk_init(struct device_node *np)
 {
 	struct rockchip_clk_provider *ctx;
@@ -919,8 +895,6 @@ static void __init rk3328_clk_init(struct device_node *np)
 		pr_err("%s: could not map cru region\n", __func__);
 		return;
 	}
-
-	rk3328_cru_base = reg_base;
 
 	ctx = rockchip_clk_init(np, reg_base, CLK_NR_CLKS);
 	if (IS_ERR(ctx)) {
@@ -948,8 +922,5 @@ static void __init rk3328_clk_init(struct device_node *np)
 	rockchip_register_restart_notifier(ctx, RK3328_GLB_SRST_FST, NULL);
 
 	rockchip_clk_of_add_provider(np, ctx);
-
-	atomic_notifier_chain_register(&panic_notifier_list,
-				       &rk3328_clk_panic_block);
 }
 CLK_OF_DECLARE(rk3328_cru, "rockchip,rk3328-cru", rk3328_clk_init);
