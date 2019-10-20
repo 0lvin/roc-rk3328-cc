@@ -61,7 +61,7 @@
  * @lcdsel_lit: reg value of selecting vop little for HDMI
  */
 struct rockchip_hdmi_chip_data {
-	u32	lcdsel_grf_reg;
+	int	lcdsel_grf_reg;
 	u32	lcdsel_big;
 	u32	lcdsel_lit;
 };
@@ -569,6 +569,9 @@ static void dw_hdmi_rockchip_encoder_enable(struct drm_encoder *encoder)
 	struct drm_crtc *crtc = encoder->crtc;
 
 	if (WARN_ON(!crtc || !crtc->state))
+		return;
+
+	if (hdmi->chip_data->lcdsel_grf_reg < 0)
 		return;
 
 	if (hdmi->phy)
