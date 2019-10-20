@@ -11,6 +11,7 @@
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/phy/phy.h>
 #include <linux/regmap.h>
 
 #include <drm/drm_of.h>
@@ -96,10 +97,9 @@ struct rockchip_hdmi {
 	struct clk *vpll_clk;
 	struct clk *grf_clk;
 	struct dw_hdmi *hdmi;
+	struct phy *phy;
 	struct clk *hclk_vio;
 	struct clk *dclk;
-
-	struct phy *phy;
 
 	unsigned long bus_format;
 	unsigned long output_bus_format;
@@ -1201,23 +1201,24 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
 		return ret;
 	}
 
-	hdmi->phy = devm_phy_get(dev, "hdmi_phy");
-	if (IS_ERR(hdmi->phy)) {
-		ret = PTR_ERR(hdmi->phy);
-		if (ret != -EPROBE_DEFER)
-			DRM_DEV_ERROR(hdmi->dev, "failed to get phy\n");
-		return ret;
-	}
-	ret = inno_dw_hdmi_init(hdmi);
-	if (ret < 0)
-		return ret;
-
 	ret = clk_prepare_enable(hdmi->vpll_clk);
 	if (ret) {
 		DRM_DEV_ERROR(hdmi->dev, "Failed to enable HDMI vpll: %d\n",
 			      ret);
 		return ret;
 	}
+
+	hdmi->phy = devm_phy_optional_get(dev, "hdmi");
+	if (IS_ERR(hdmi->phy)) {
+		ret = PTR_ERR(hdmi->phy);
+		if (ret != -EPROBE_DEFER)
+			DRM_DEV_ERROR(hdmi->dev, "failed to get phy\n");
+		return ret;
+	}
+
+	ret = inno_dw_hdmi_init(hdmi);
+	if (ret < 0)
+		return ret;
 
 	drm_encoder_helper_add(encoder, &dw_hdmi_rockchip_encoder_helper_funcs);
 	drm_encoder_init(drm, encoder, &dw_hdmi_rockchip_encoder_funcs,
