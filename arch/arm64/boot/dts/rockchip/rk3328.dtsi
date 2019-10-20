@@ -1054,6 +1054,8 @@
 		clock-names = "sysclk", "refclk";
 		clock-output-names = "hdmi_phy";
 		#clock-cells = <0>;
+		nvmem-cells = <&efuse_cpu_version>;
+		nvmem-cell-names = "cpu-version";
 		#phy-cells = <0>;
 		status = "disabled";
 	};

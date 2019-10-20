@@ -456,6 +456,13 @@
 		rockchip,system-power-controller;
 		wakeup-source;
 
+		vcc1-supply = <&vcc_sys>;
+		vcc2-supply = <&vcc_sys>;
+		vcc3-supply = <&vcc_sys>;
+		vcc4-supply = <&vcc_sys>;
+		vcc5-supply = <&vcc_io>;
+		vcc6-supply = <&vcc_io>;
+
 		rtc {
 			status = "okay";
 		};
