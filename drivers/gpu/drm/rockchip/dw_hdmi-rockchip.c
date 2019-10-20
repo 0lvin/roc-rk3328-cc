@@ -1179,7 +1179,11 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
 		return -ENOMEM;
 
 	match = of_match_node(dw_hdmi_rockchip_dt_ids, pdev->dev.of_node);
-	plat_data = (struct dw_hdmi_plat_data *)match->data;
+	plat_data = devm_kmemdup(&pdev->dev, match->data,
+					     sizeof(*plat_data), GFP_KERNEL);
+	if (!plat_data)
+		return -ENOMEM;
+
 	hdmi->dev = &pdev->dev;
 	hdmi->chip_data = plat_data->phy_data;
 	plat_data->phy_data = hdmi;
