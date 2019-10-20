@@ -13,7 +13,6 @@
 #include <linux/platform_device.h>
 #include <linux/input.h>
 #include <linux/workqueue.h>
-#include <linux/wakelock.h>
 #include <linux/slab.h>
 #include <linux/rockchip/rockchip_sip.h>
 #include <linux/leds.h>
@@ -83,7 +82,6 @@ struct rkxx_remotectl_drvdata {
 	struct input_dev *input;
 	struct timer_list timer;
 	struct tasklet_struct remote_tasklet;
-	struct wake_lock remotectl_wake_lock;
 };
 
 static struct rkxx_remotectl_button *remotectl_button;
@@ -345,8 +343,6 @@ static irqreturn_t rockchip_pwm_irq(int irq, void *dev_id)
 		}
 	}
 	writel_relaxed(PWM_CH_INT(id), ddata->base + PWM_REG_INTSTS(id));
-	if (ddata->state == RMC_PRELOAD)
-		wake_lock_timeout(&ddata->remotectl_wake_lock, HZ);
 	return IRQ_HANDLED;
 }
 
@@ -561,8 +557,6 @@ static int rk_pwm_probe(struct platform_device *pdev)
 	enable_irq_wake(irq);
 	timer_setup(&ddata->timer, rk_pwm_remotectl_timer, 0);
 	fb_register_client(&remotectl_fb_notifier);
-	wake_lock_init(&ddata->remotectl_wake_lock,
-		       WAKE_LOCK_SUSPEND, "rockchip_pwm_remote");
 	cpumask_clear(&cpumask);
 	cpumask_set_cpu(cpu_id, &cpumask);
 	irq_set_affinity(irq, &cpumask);
@@ -570,7 +564,7 @@ static int rk_pwm_probe(struct platform_device *pdev)
 			       IRQF_NO_SUSPEND, "rk_pwm_irq", ddata);
 	if (ret) {
 		dev_err(&pdev->dev, "cannot claim IRQ %d\n", irq);
-		goto error_irq;
+		goto error_pclk;
 	}
 	rk_pwm_remotectl_hw_init(ddata);
 	pwm_freq = clk_get_rate(clk) / 64;
@@ -619,8 +613,6 @@ static int rk_pwm_probe(struct platform_device *pdev)
 	led_trigger_register_simple("ir-power-click", &ledtrig_ir_click);
 end:
 	return 0;
-error_irq:
-	wake_lock_destroy(&ddata->remotectl_wake_lock);
 error_pclk:
 	clk_unprepare(p_clk);
 error_clk:

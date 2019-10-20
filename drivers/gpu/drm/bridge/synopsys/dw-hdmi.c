@@ -33,9 +33,6 @@
 #include <drm/drm_encoder_slave.h>
 #include <drm/drm_scdc_helper.h>
 #include <drm/bridge/dw_hdmi.h>
-#ifdef CONFIG_SWITCH
-#include <linux/switch.h>
-#endif
 
 #include <uapi/linux/media-bus-format.h>
 #include <uapi/linux/videodev2.h>
@@ -254,9 +251,6 @@ struct dw_hdmi {
 	bool audio_enable;
 	bool scramble_low_rates;
 
-#ifdef CONFIG_SWITCH
-	struct switch_dev switchdev;
-#endif
 	int irq;
 
 	unsigned int reg_shift;
@@ -309,13 +303,6 @@ static void repo_hpd_event(struct work_struct *p_work)
 
 		change = drm_helper_hpd_irq_event(hdmi->bridge.dev);
 	}
-
-#ifdef CONFIG_SWITCH
-	if (hdmi->hpd_state)
-		switch_set_state(&hdmi->switchdev, 1);
-	else
-		switch_set_state(&hdmi->switchdev, 0);
-#endif
 }
 
 static bool check_hdmi_irq(struct dw_hdmi *hdmi, int intr_stat,
@@ -2499,14 +2486,6 @@ static void dw_hdmi_connector_force(struct drm_connector *connector)
 					     connector);
 
 	mutex_lock(&hdmi->mutex);
-#ifdef CONFIG_SWITCH
-	if (!hdmi->disabled && hdmi->force != connector->force) {
-		if (connector->force == DRM_FORCE_OFF)
-			switch_set_state(&hdmi->switchdev, 0);
-		else if (connector->force == DRM_FORCE_ON)
-			switch_set_state(&hdmi->switchdev, 1);
-	}
-#endif
 	hdmi->force = connector->force;
 	dw_hdmi_update_power(hdmi);
 	dw_hdmi_update_phy_mask(hdmi);
@@ -3149,11 +3128,6 @@ __dw_hdmi_probe(struct platform_device *pdev,
 	hdmi->bridge.of_node = pdev->dev.of_node;
 #endif
 
-#ifdef CONFIG_SWITCH
-	hdmi->switchdev.name = "hdmi";
-	switch_dev_register(&hdmi->switchdev);
-#endif
-
 	dw_hdmi_setup_i2c(hdmi);
 	if (hdmi->phy.ops->setup_hpd)
 		hdmi->phy.ops->setup_hpd(hdmi, hdmi->phy.data);
@@ -3263,9 +3237,6 @@ static void __dw_hdmi_remove(struct dw_hdmi *hdmi)
 	if (hdmi->cec_notifier)
 		cec_notifier_put(hdmi->cec_notifier);
 
-#ifdef CONFIG_SWITCH
-	switch_dev_unregister(&hdmi->switchdev);
-#endif
 	dw_hdmi_destroy_properties(hdmi);
 
 	if (hdmi->cec_notifier)

@@ -186,6 +186,12 @@
 		};
 	};
 
+	display_subsystem: display-subsystem {
+		compatible = "rockchip,display-subsystem";
+		ports = <&vop_out>;
+		status = "disabled";
+	};
+
 	psci {
 		compatible = "arm,psci-1.0", "arm,psci-0.2";
 		method = "smc";
@@ -300,6 +306,12 @@
 			status = "disabled";
 		};
 
+		grf_gpio: grf-gpio {
+			compatible = "rockchip,rk3328-grf-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+		};
+
 		power: power-controller {
 			compatible = "rockchip,rk3328-power-controller";
 			#power-domain-cells = <1>;
@@ -337,7 +349,6 @@
 			mode-loader = <BOOT_BL_DOWNLOAD>;
 			mode-ums = <BOOT_UMS>;
 		};
-
 	};
 
 	uart0: serial@ff110000 {
@@ -992,7 +1003,7 @@
 			hdmi_in: port {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				hdmi_in_vop: endpoint@0 {
+				hdmi_in_vop: endpoint {
 					reg = <0>;
 					remote-endpoint = <&vop_out_hdmi>;
 				};
@@ -1026,12 +1037,6 @@
 		};
 	};
 
-	display_subsystem: display-subsystem {
-		compatible = "rockchip,display-subsystem";
-		ports = <&vop_out>;
-		status = "disabled";
-	};
-
 	codec: codec@ff410000 {
 		compatible = "rockchip,rk3328-codec";
 		reg = <0x0 0xff410000 0x0 0x1000>;
@@ -1041,15 +1046,17 @@
 		status = "disabled";
 	};
 
-	hdmiphy: hdmiphy@ff430000 {
+	hdmiphy: phy@ff430000 {
 		compatible = "rockchip,rk3328-hdmi-phy";
 		reg = <0x0 0xff430000 0x0 0x10000>;
 		interrupts = <GIC_SPI 83 IRQ_TYPE_LEVEL_HIGH>;
-		#phy-cells = <0>;
 		clocks = <&cru PCLK_HDMIPHY>, <&xin24m>;
 		clock-names = "sysclk", "refclk";
-		#clock-cells = <0>;
 		clock-output-names = "hdmi_phy";
+		#clock-cells = <0>;
+		nvmem-cells = <&efuse_cpu_version>;
+		nvmem-cell-names = "cpu-version";
+		#phy-cells = <0>;
 		status = "disabled";
 	};
 
