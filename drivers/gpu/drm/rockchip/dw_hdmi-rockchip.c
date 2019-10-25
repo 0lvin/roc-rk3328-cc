@@ -40,12 +40,25 @@
 #define RK3288_HDMI_LCDC0_YUV420	BIT(2)
 #define RK3288_HDMI_LCDC1_YUV420	BIT(3)
 #define RK3366_GRF_SOC_CON0		0x0400
-
 #define RK3328_GRF_SOC_CON2		0x0408
+
+#define RK3328_HDMI_SDAIN_MSK		BIT(11)
+#define RK3328_HDMI_SCLIN_MSK		BIT(10)
+#define RK3328_HDMI_HPD_IOE		BIT(2)
 #define RK3328_DDC_MASK_EN		((3 << 10) | (3 << (10 + 16)))
 #define RK3328_GRF_SOC_CON3		0x040c
+/* need to be unset if hdmi or i2c should control voltage */
+#define RK3328_HDMI_SDA5V_GRF		BIT(15)
+#define RK3328_HDMI_SCL5V_GRF		BIT(14)
+#define RK3328_HDMI_HPD5V_GRF		BIT(13)
+#define RK3328_HDMI_CEC5V_GRF		BIT(12)
 #define RK3328_IO_CTRL_BY_HDMI		(0xf0000000 | BIT(13) | BIT(12))
 #define RK3328_GRF_SOC_CON4		0x0410
+#define RK3328_HDMI_HPD_SARADC		BIT(13)
+#define RK3328_HDMI_CEC_5V		BIT(11)
+#define RK3328_HDMI_SDA_5V		BIT(10)
+#define RK3328_HDMI_SCL_5V		BIT(9)
+#define RK3328_HDMI_HPD_5V		BIT(8)
 #define RK3328_IO_3V_DOMAIN		(7 << (9 + 16))
 #define RK3328_IO_5V_DOMAIN		((7 << 9) | (3 << (9 + 16)))
 #define RK3328_HPD_3V			(BIT(8 + 16) | BIT(13 + 16))
@@ -1063,6 +1076,66 @@ static const struct dw_hdmi_plat_data rk3228_hdmi_drv_data = {
 	.get_enc_out_encoding = dw_hdmi_rockchip_get_enc_out_encoding,
 };
 
+static int dw_hdmi_rockchip_genphy_init(struct dw_hdmi *dw_hdmi, void *data,
+			     struct drm_display_mode *mode)
+{
+	struct rockchip_hdmi *hdmi = (struct rockchip_hdmi *)data;
+
+	return phy_power_on(hdmi->phy);
+}
+
+static void dw_hdmi_rockchip_genphy_disable(struct dw_hdmi *dw_hdmi, void *data)
+{
+	struct rockchip_hdmi *hdmi = (struct rockchip_hdmi *)data;
+
+	phy_power_off(hdmi->phy);
+}
+
+static enum drm_connector_status
+dw_hdmi_rk3328_read_hpd(struct dw_hdmi *dw_hdmi, void *data)
+{
+	struct rockchip_hdmi *hdmi = (struct rockchip_hdmi *)data;
+	enum drm_connector_status status;
+
+	status = dw_hdmi_phy_read_hpd(dw_hdmi, data);
+
+	if (status == connector_status_connected)
+		regmap_write(hdmi->regmap,
+			RK3328_GRF_SOC_CON4,
+			HIWORD_UPDATE(RK3328_HDMI_SDA_5V | RK3328_HDMI_SCL_5V,
+				      RK3328_HDMI_SDA_5V | RK3328_HDMI_SCL_5V));
+	else
+		regmap_write(hdmi->regmap,
+			RK3328_GRF_SOC_CON4,
+			HIWORD_UPDATE(0, RK3328_HDMI_SDA_5V |
+					 RK3328_HDMI_SCL_5V));
+	return status;
+}
+
+static void dw_hdmi_rk3328_setup_hpd(struct dw_hdmi *dw_hdmi, void *data)
+{
+	struct rockchip_hdmi *hdmi = (struct rockchip_hdmi *)data;
+
+	dw_hdmi_phy_setup_hpd(dw_hdmi, data);
+
+	/* Enable and map pins to 3V grf-controlled io-voltage */
+	regmap_write(hdmi->regmap,
+		RK3328_GRF_SOC_CON4,
+		HIWORD_UPDATE(0, RK3328_HDMI_HPD_SARADC | RK3328_HDMI_CEC_5V |
+				 RK3328_HDMI_SDA_5V | RK3328_HDMI_SCL_5V |
+				 RK3328_HDMI_HPD_5V));
+	regmap_write(hdmi->regmap,
+		RK3328_GRF_SOC_CON3,
+		HIWORD_UPDATE(0, RK3328_HDMI_SDA5V_GRF | RK3328_HDMI_SCL5V_GRF |
+				 RK3328_HDMI_HPD5V_GRF |
+				 RK3328_HDMI_CEC5V_GRF));
+	regmap_write(hdmi->regmap,
+		RK3328_GRF_SOC_CON2,
+		HIWORD_UPDATE(RK3328_HDMI_SDAIN_MSK | RK3328_HDMI_SCLIN_MSK,
+			      RK3328_HDMI_SDAIN_MSK | RK3328_HDMI_SCLIN_MSK |
+			      RK3328_HDMI_HPD_IOE));
+}
+
 static struct rockchip_hdmi_chip_data rk3288_chip_data = {
 	.lcdsel_grf_reg = RK3288_GRF_SOC_CON6,
 	.lcdsel_big = HIWORD_UPDATE(0, RK3288_HDMI_LCDC_SEL),
@@ -1076,21 +1149,6 @@ static const struct dw_hdmi_plat_data rk3288_hdmi_drv_data = {
 	.phy_config = rockchip_phy_config,
 	.tmds_n_table = rockchip_werid_tmds_n_table,
 	.phy_data = &rk3288_chip_data,
-	.get_input_bus_format = dw_hdmi_rockchip_get_input_bus_format,
-	.get_output_bus_format = dw_hdmi_rockchip_get_output_bus_format,
-	.get_enc_in_encoding = dw_hdmi_rockchip_get_enc_in_encoding,
-	.get_enc_out_encoding = dw_hdmi_rockchip_get_enc_out_encoding,
-};
-
-static struct rockchip_hdmi_chip_data rk3328_chip_data = {
-	.lcdsel_grf_reg = -1,
-};
-
-static const struct dw_hdmi_plat_data rk3328_hdmi_drv_data = {
-	.mode_valid = dw_hdmi_rockchip_mode_valid,
-	.phy_data = &rk3328_chip_data,
-	.phy_ops = &inno_dw_hdmi_phy_ops,
-	.phy_name = "inno_dw_hdmi_phy2",
 	.get_input_bus_format = dw_hdmi_rockchip_get_input_bus_format,
 	.get_output_bus_format = dw_hdmi_rockchip_get_output_bus_format,
 	.get_enc_in_encoding = dw_hdmi_rockchip_get_enc_in_encoding,
@@ -1114,6 +1172,33 @@ static const struct dw_hdmi_plat_data rk3368_hdmi_drv_data = {
 	.mpll_cfg_420 = rockchip_mpll_cfg_420,
 	.cur_ctr    = rockchip_cur_ctr,
 	.phy_config = rockchip_phy_config,
+};
+
+static const struct dw_hdmi_phy_ops rk3328_hdmi_phy_ops = {
+	.init		= dw_hdmi_rockchip_genphy_init,
+	.disable	= dw_hdmi_rockchip_genphy_disable,
+	.read_hpd	= dw_hdmi_rk3328_read_hpd,
+	.update_hpd	= dw_hdmi_phy_update_hpd,
+	.setup_hpd	= dw_hdmi_rk3328_setup_hpd,
+};
+
+static struct rockchip_hdmi_chip_data rk3328_chip_data = {
+	.lcdsel_grf_reg = -1,
+};
+
+static const struct dw_hdmi_plat_data rk3328_hdmi_drv_data = {
+	.mode_valid = dw_hdmi_rockchip_mode_valid,
+	.mpll_cfg = rockchip_mpll_cfg,
+	.cur_ctr = rockchip_cur_ctr,
+	.phy_config = rockchip_phy_config,
+	.phy_data = &rk3328_chip_data,
+	.phy_ops = &inno_dw_hdmi_phy_ops,
+	.phy_name = "inno_dw_hdmi_phy2",
+	.phy_force_vendor = true,
+	.get_input_bus_format = dw_hdmi_rockchip_get_input_bus_format,
+	.get_output_bus_format = dw_hdmi_rockchip_get_output_bus_format,
+	.get_enc_in_encoding = dw_hdmi_rockchip_get_enc_in_encoding,
+	.get_enc_out_encoding = dw_hdmi_rockchip_get_enc_out_encoding,
 };
 
 static struct rockchip_hdmi_chip_data rk3399_chip_data = {
