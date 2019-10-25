@@ -275,10 +275,17 @@ int intel_plane_check_src_coordinates(struct intel_plane_state *plane_state)
 	src->y2 = (src_y + src_h) << 16;
 
 	if (fb->format->is_yuv &&
-	    fb->format->format != DRM_FORMAT_NV12 &&
 	    (src_x & 1 || src_w & 1)) {
 		DRM_DEBUG_KMS("src x/w (%u, %u) must be a multiple of 2 for YUV planes\n",
 			      src_x, src_w);
+		return -EINVAL;
+	}
+
+	if (fb->format->is_yuv &&
+	    fb->format->num_planes > 1 &&
+	    (src_y & 1 || src_h & 1)) {
+		DRM_DEBUG_KMS("src y/h (%u, %u) must be a multiple of 2 for planar YUV planes\n",
+			      src_y, src_h);
 		return -EINVAL;
 	}
 
@@ -346,7 +353,6 @@ skl_program_scaler(struct intel_plane *plane,
 
 	I915_WRITE_FW(SKL_PS_CTRL(pipe, scaler_id),
 		      PS_SCALER_EN | PS_PLANE_SEL(plane->id) | scaler->mode);
-	I915_WRITE_FW(SKL_PS_PWR_GATE(pipe, scaler_id), 0);
 	I915_WRITE_FW(SKL_PS_VPHASE(pipe, scaler_id),
 		      PS_Y_PHASE(y_vphase) | PS_UV_RGB_PHASE(uv_rgb_vphase));
 	I915_WRITE_FW(SKL_PS_HPHASE(pipe, scaler_id),
@@ -403,7 +409,6 @@ skl_update_plane(struct intel_plane *plane,
 
 	if (plane_state->scaler_id >= 0) {
 		skl_program_scaler(plane, crtc_state, plane_state);
-
 		I915_WRITE_FW(PLANE_POS(pipe, plane_id), 0);
 	} else {
 		I915_WRITE_FW(PLANE_POS(pipe, plane_id), (crtc_y << 16) | crtc_x);
@@ -1219,6 +1224,8 @@ vlv_sprite_check(struct intel_crtc_state *crtc_state,
 static int skl_plane_check_fb(const struct intel_crtc_state *crtc_state,
 			      const struct intel_plane_state *plane_state)
 {
+	struct intel_plane *plane = to_intel_plane(plane_state->base.plane);
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	const struct drm_framebuffer *fb = plane_state->base.fb;
 	unsigned int rotation = plane_state->base.rotation;
 	struct drm_format_name_buf format_name;
@@ -1247,13 +1254,17 @@ static int skl_plane_check_fb(const struct intel_crtc_state *crtc_state,
 		}
 
 		/*
-		 * 90/270 is not allowed with RGB64 16:16:16:16,
-		 * RGB 16-bit 5:6:5, and Indexed 8-bit.
-		 * TBD: Add RGB64 case once its added in supported format list.
+		 * 90/270 is not allowed with RGB64 16:16:16:16 and
+		 * Indexed 8-bit. RGB 16-bit 5:6:5 is allowed gen11 onwards.
+		 * TBD: Add RGB64 case once its added in supported format
+		 * list.
 		 */
 		switch (fb->format->format) {
-		case DRM_FORMAT_C8:
 		case DRM_FORMAT_RGB565:
+			if (INTEL_GEN(dev_priv) >= 11)
+				break;
+			/* fall through */
+		case DRM_FORMAT_C8:
 			DRM_DEBUG_KMS("Unsupported pixel format %s for 90/270!\n",
 				      drm_get_format_name(fb->format->format,
 							  &format_name));
