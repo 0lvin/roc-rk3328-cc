@@ -573,7 +573,7 @@ static const char *hdmi_infoframe_type_get_name(enum hdmi_infoframe_type type)
 
 static void hdmi_infoframe_log_header(const char *level,
 				      struct device *dev,
-				      struct hdmi_any_infoframe *frame)
+				      const struct hdmi_any_infoframe *frame)
 {
 	hdmi_log("HDMI infoframe: %s, version %u, length %u\n",
 		hdmi_infoframe_type_get_name(frame->type),
@@ -775,10 +775,10 @@ hdmi_content_type_get_name(enum hdmi_content_type content_type)
  */
 static void hdmi_avi_infoframe_log(const char *level,
 				   struct device *dev,
-				   struct hdmi_avi_infoframe *frame)
+				   const struct hdmi_avi_infoframe *frame)
 {
 	hdmi_infoframe_log_header(level, dev,
-				  (struct hdmi_any_infoframe *)frame);
+				  (const struct hdmi_any_infoframe *)frame);
 
 	hdmi_log("    colorspace: %s\n",
 			hdmi_colorspace_get_name(frame->colorspace));
@@ -852,12 +852,12 @@ static const char *hdmi_spd_sdi_get_name(enum hdmi_spd_sdi sdi)
  */
 static void hdmi_spd_infoframe_log(const char *level,
 				   struct device *dev,
-				   struct hdmi_spd_infoframe *frame)
+				   const struct hdmi_spd_infoframe *frame)
 {
 	u8 buf[17];
 
 	hdmi_infoframe_log_header(level, dev,
-				  (struct hdmi_any_infoframe *)frame);
+				  (const struct hdmi_any_infoframe *)frame);
 
 	memset(buf, 0, sizeof(buf));
 
@@ -988,10 +988,10 @@ hdmi_audio_coding_type_ext_get_name(enum hdmi_audio_coding_type_ext ctx)
  */
 static void hdmi_audio_infoframe_log(const char *level,
 				     struct device *dev,
-				     struct hdmi_audio_infoframe *frame)
+				     const struct hdmi_audio_infoframe *frame)
 {
 	hdmi_infoframe_log_header(level, dev,
-				  (struct hdmi_any_infoframe *)frame);
+				  (const struct hdmi_any_infoframe *)frame);
 
 	if (frame->channels)
 		hdmi_log("    channels: %u\n", frame->channels - 1);
@@ -1084,12 +1084,12 @@ hdmi_3d_structure_get_name(enum hdmi_3d_structure s3d_struct)
 static void
 hdmi_vendor_any_infoframe_log(const char *level,
 			      struct device *dev,
-			      union hdmi_vendor_any_infoframe *frame)
+			      const union hdmi_vendor_any_infoframe *frame)
 {
-	struct hdmi_vendor_infoframe *hvf = &frame->hdmi;
+	const struct hdmi_vendor_infoframe *hvf = &frame->hdmi;
 
 	hdmi_infoframe_log_header(level, dev,
-				  (struct hdmi_any_infoframe *)frame);
+				  (const struct hdmi_any_infoframe *)frame);
 
 	if (frame->any.oui != HDMI_IEEE_OUI) {
 		hdmi_log("    not a HDMI vendor infoframe\n");
@@ -1119,7 +1119,7 @@ hdmi_vendor_any_infoframe_log(const char *level,
  */
 void hdmi_infoframe_log(const char *level,
 			struct device *dev,
-			union hdmi_infoframe *frame)
+			const union hdmi_infoframe *frame)
 {
 	switch (frame->any.type) {
 	case HDMI_INFOFRAME_TYPE_AVI:
