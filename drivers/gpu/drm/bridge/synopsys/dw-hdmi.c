@@ -2507,7 +2507,6 @@ static const struct drm_connector_funcs dw_hdmi_connector_funcs = {
 
 static const struct drm_connector_helper_funcs dw_hdmi_connector_helper_funcs = {
 	.get_modes = dw_hdmi_connector_get_modes,
-	.best_encoder = drm_atomic_helper_best_encoder,
 };
 
 static void dw_hdmi_attatch_properties(struct dw_hdmi *hdmi)
