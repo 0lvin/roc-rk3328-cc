@@ -184,6 +184,7 @@ intel_crtc_duplicate_state(struct drm_crtc *crtc)
 	crtc_state->fifo_changed = false;
 	crtc_state->wm.need_postvbl_update = false;
 	crtc_state->fb_bits = 0;
+	crtc_state->update_planes = 0;
 
 	return &crtc_state->base;
 }
@@ -232,14 +233,24 @@ static void intel_atomic_setup_scaler(struct intel_crtc_scaler_state *scaler_sta
 	if (plane_state && plane_state->base.fb &&
 	    plane_state->base.fb->format->is_yuv &&
 	    plane_state->base.fb->format->num_planes > 1) {
-		if (INTEL_GEN(dev_priv) == 9 &&
-		    !IS_GEMINILAKE(dev_priv))
+		if (IS_GEN9(dev_priv) &&
+		    !IS_GEMINILAKE(dev_priv)) {
 			mode = SKL_PS_SCALER_MODE_NV12;
-		else
+		} else if (icl_is_hdr_plane(to_intel_plane(plane_state->base.plane))) {
+			/*
+			 * On gen11+'s HDR planes we only use the scaler for
+			 * scaling. They have a dedicated chroma upsampler, so
+			 * we don't need the scaler to upsample the UV plane.
+			 */
+			mode = PS_SCALER_MODE_NORMAL;
+		} else {
 			mode = PS_SCALER_MODE_PLANAR;
 
+			if (plane_state->linked_plane)
+				mode |= PS_PLANE_Y_SEL(plane_state->linked_plane->id);
+		}
 	} else if (INTEL_GEN(dev_priv) > 9 || IS_GEMINILAKE(dev_priv)) {
-		mode = PS_SCALER_MODE_PACKED;
+		mode = PS_SCALER_MODE_NORMAL;
 	} else if (num_scalers_need == 1 && intel_crtc->num_scalers > 1) {
 		/*
 		 * when only 1 scaler is in use on a pipe with 2 scalers

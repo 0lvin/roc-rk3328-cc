@@ -511,6 +511,18 @@ struct drm_connector_state {
 	 * drm_writeback_signal_completion()
 	 */
 	struct drm_writeback_job *writeback_job;
+
+	/**
+	 * @max_requested_bpc: Connector property to limit the maximum bit
+	 * depth of the pixels.
+	 */
+	u8 max_requested_bpc;
+
+	/**
+	 * @max_bpc: Connector max_bpc based on the requested max_bpc property
+	 * and the connector bpc limitations obtained from edid.
+	 */
+	u8 max_bpc;
 };
 
 /**
@@ -964,6 +976,17 @@ struct drm_connector {
 	struct drm_property *scaling_mode_property;
 
 	/**
+	 * @vrr_capable_property: Optional property to help userspace
+	 * query hardware support for variable refresh rate on a connector.
+	 * connector. Drivers can add the property to a connector by
+	 * calling drm_connector_attach_vrr_capable_property().
+	 *
+	 * This should be updated only by calling
+	 * drm_connector_set_vrr_capable_property().
+	 */
+	struct drm_property *vrr_capable_property;
+
+	/**
 	 * @content_protection_property: DRM ENUM property for content
 	 * protection. See drm_connector_attach_content_protection_property().
 	 */
@@ -976,6 +999,12 @@ struct drm_connector {
 	 * be updated by calling drm_connector_set_path_property().
 	 */
 	struct drm_property_blob *path_blob_ptr;
+
+	/**
+	 * @max_bpc_property: Default connector property for the max bpc to be
+	 * driven out of the connector.
+	 */
+	struct drm_property *max_bpc_property;
 
 #define DRM_CONNECTOR_POLL_HPD (1 << 0)
 #define DRM_CONNECTOR_POLL_CONNECT (1 << 1)
@@ -1197,30 +1226,6 @@ static inline void drm_connector_put(struct drm_connector *connector)
 }
 
 /**
- * drm_connector_reference - acquire a connector reference
- * @connector: DRM connector
- *
- * This is a compatibility alias for drm_connector_get() and should not be
- * used by new code.
- */
-static inline void drm_connector_reference(struct drm_connector *connector)
-{
-	drm_connector_get(connector);
-}
-
-/**
- * drm_connector_unreference - release a connector reference
- * @connector: DRM connector
- *
- * This is a compatibility alias for drm_connector_put() and should not be
- * used by new code.
- */
-static inline void drm_connector_unreference(struct drm_connector *connector)
-{
-	drm_connector_put(connector);
-}
-
-/**
  * drm_connector_is_unregistered - has the connector been unregistered from
  * userspace?
  * @connector: DRM connector
@@ -1255,6 +1260,8 @@ int drm_mode_create_scaling_mode_property(struct drm_device *dev);
 int drm_connector_attach_content_type_property(struct drm_connector *dev);
 int drm_connector_attach_scaling_mode_property(struct drm_connector *connector,
 					       u32 scaling_mode_mask);
+int drm_connector_attach_vrr_capable_property(
+		struct drm_connector *connector);
 int drm_connector_attach_content_protection_property(
 		struct drm_connector *connector);
 int drm_mode_create_aspect_ratio_property(struct drm_device *dev);
@@ -1271,8 +1278,12 @@ int drm_connector_update_edid_property(struct drm_connector *connector,
 				       const struct edid *edid);
 void drm_connector_set_link_status_property(struct drm_connector *connector,
 					    uint64_t link_status);
+void drm_connector_set_vrr_capable_property(
+		struct drm_connector *connector, bool capable);
 int drm_connector_init_panel_orientation_property(
 	struct drm_connector *connector, int width, int height);
+int drm_connector_attach_max_bpc_property(struct drm_connector *connector,
+					  int min, int max);
 
 /**
  * struct drm_tile_group - Tile group metadata
