@@ -90,8 +90,10 @@ static int psp_sw_fini(void *handle)
 	adev->psp.sos_fw = NULL;
 	release_firmware(adev->psp.asd_fw);
 	adev->psp.asd_fw = NULL;
-	release_firmware(adev->psp.ta_fw);
-	adev->psp.ta_fw = NULL;
+	if (adev->psp.ta_fw) {
+		release_firmware(adev->psp.ta_fw);
+		adev->psp.ta_fw = NULL;
+	}
 	return 0;
 }
 
@@ -153,14 +155,6 @@ psp_cmd_submit_buf(struct psp_context *psp,
 	}
 
 	return ret;
-}
-
-bool psp_support_vmr_ring(struct psp_context *psp)
-{
-	if (amdgpu_sriov_vf(psp->adev) && psp->sos_fw_version > 0x80045)
-		return true;
-	else
-		return false;
 }
 
 static void psp_prep_tmr_cmd_buf(struct psp_context *psp,
@@ -442,6 +436,9 @@ static int psp_xgmi_initialize(struct psp_context *psp)
 {
 	struct ta_xgmi_shared_memory *xgmi_cmd;
 	int ret;
+
+	if (!psp->adev->psp.ta_fw)
+		return -ENOENT;
 
 	if (!psp->xgmi_context.initialized) {
 		ret = psp_xgmi_init_shared_buf(psp);
