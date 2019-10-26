@@ -2505,8 +2505,20 @@ static const struct drm_connector_funcs dw_hdmi_connector_funcs = {
 	.atomic_get_property = dw_hdmi_atomic_connector_get_property,
 };
 
+/*
+ * For connectors that support multiple encoders, either the
+ * .atomic_best_encoder() or .best_encoder() operation must be implemented.
+ */
+static struct drm_encoder *
+pick_single_encoder_for_connector(struct drm_connector *connector)
+{
+       WARN_ON(connector->encoder_ids[1]);
+       return drm_encoder_find(connector->dev, NULL, connector->encoder_ids[0]);
+}
+
 static const struct drm_connector_helper_funcs dw_hdmi_connector_helper_funcs = {
 	.get_modes = dw_hdmi_connector_get_modes,
+	.best_encoder = pick_single_encoder_for_connector,
 };
 
 static void dw_hdmi_attatch_properties(struct dw_hdmi *hdmi)
