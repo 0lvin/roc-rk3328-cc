@@ -72,11 +72,6 @@ struct rockchip_crtc_state {
 	int output_bpc;
 	int output_flags;
 	int bus_format;
-	int yuv_overlay;
-	int post_r2y_en;
-	int post_y2r_en;
-	int post_csc_mode;
-	int color_space;
 };
 #define to_rockchip_crtc_state(s) \
 		container_of(s, struct rockchip_crtc_state, base)

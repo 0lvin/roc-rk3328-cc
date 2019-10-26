@@ -775,15 +775,6 @@ dw_hdmi_rockchip_encoder_atomic_check(struct drm_encoder *encoder,
 		hdmi->output_bus_format = s->bus_format;
 	}
 
-	if (hdmi->enc_out_encoding == V4L2_YCBCR_ENC_BT2020)
-		s->color_space = V4L2_COLORSPACE_BT2020;
-	else if (colorformat == DRM_HDMI_OUTPUT_DEFAULT_RGB)
-		s->color_space = V4L2_COLORSPACE_DEFAULT;
-	else if (hdmi->enc_out_encoding == V4L2_YCBCR_ENC_709)
-		s->color_space = V4L2_COLORSPACE_REC709;
-	else
-		s->color_space = V4L2_COLORSPACE_SMPTE170M;
-
 	return 0;
 }
 
