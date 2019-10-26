@@ -36,7 +36,6 @@
 #define RK3328_HDMI_SDAIN_MSK		BIT(11)
 #define RK3328_HDMI_SCLIN_MSK		BIT(10)
 #define RK3328_HDMI_HPD_IOE		BIT(2)
-#define RK3328_DDC_MASK_EN		((3 << 10) | (3 << (10 + 16)))
 #define RK3328_GRF_SOC_CON3		0x040c
 /* need to be unset if hdmi or i2c should control voltage */
 #define RK3328_HDMI_SDA5V_GRF		BIT(15)
@@ -181,9 +180,10 @@ static int inno_dw_hdmi_init(struct rockchip_hdmi *hdmi)
 				 RK3328_HDMI_HPD5V_GRF |
 				 RK3328_HDMI_CEC5V_GRF));
 	regmap_write(hdmi->regmap,
-		     RK3328_GRF_SOC_CON2,
-		     RK3328_DDC_MASK_EN |
-		     BIT(18));
+		RK3328_GRF_SOC_CON2,
+		HIWORD_UPDATE(RK3328_HDMI_SDAIN_MSK | RK3328_HDMI_SCLIN_MSK,
+			      RK3328_HDMI_SDAIN_MSK | RK3328_HDMI_SCLIN_MSK |
+			      RK3328_HDMI_HPD_IOE));
 	clk_disable_unprepare(hdmi->grf_clk);
 	return 0;
 }
@@ -1123,25 +1123,6 @@ static const struct dw_hdmi_plat_data rk3288_hdmi_drv_data = {
 	.get_enc_out_encoding = dw_hdmi_rockchip_get_enc_out_encoding,
 };
 
-static const struct dw_hdmi_plat_data rk3366_hdmi_drv_data = {
-	.mode_valid = dw_hdmi_rockchip_mode_valid,
-	.mpll_cfg   = rockchip_mpll_cfg,
-	.cur_ctr    = rockchip_cur_ctr,
-	.phy_config = rockchip_phy_config,
-	.get_input_bus_format = dw_hdmi_rockchip_get_input_bus_format,
-	.get_output_bus_format = dw_hdmi_rockchip_get_output_bus_format,
-	.get_enc_in_encoding = dw_hdmi_rockchip_get_enc_in_encoding,
-	.get_enc_out_encoding = dw_hdmi_rockchip_get_enc_out_encoding,
-};
-
-static const struct dw_hdmi_plat_data rk3368_hdmi_drv_data = {
-	.mode_valid = dw_hdmi_rockchip_mode_valid,
-	.mpll_cfg   = rockchip_mpll_cfg,
-	.mpll_cfg_420 = rockchip_mpll_cfg_420,
-	.cur_ctr    = rockchip_cur_ctr,
-	.phy_config = rockchip_phy_config,
-};
-
 static const struct dw_hdmi_phy_ops rk3328_hdmi_phy_ops = {
 	.init		= dw_hdmi_rockchip_genphy_init,
 	.disable	= dw_hdmi_rockchip_genphy_disable,
@@ -1194,14 +1175,6 @@ static const struct of_device_id dw_hdmi_rockchip_dt_ids[] = {
 	},
 	{ .compatible = "rockchip,rk3328-dw-hdmi",
 	  .data = &rk3328_hdmi_drv_data
-	},
-	{
-	 .compatible = "rockchip,rk3366-dw-hdmi",
-	 .data = &rk3366_hdmi_drv_data
-	},
-	{
-	 .compatible = "rockchip,rk3368-dw-hdmi",
-	 .data = &rk3368_hdmi_drv_data
 	},
 	{ .compatible = "rockchip,rk3399-dw-hdmi",
 	  .data = &rk3399_hdmi_drv_data
