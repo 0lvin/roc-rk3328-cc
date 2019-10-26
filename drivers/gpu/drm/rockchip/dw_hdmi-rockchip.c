@@ -501,8 +501,12 @@ dw_hdmi_rockchip_mode_valid(struct drm_connector *connector,
 		if (funcs->atomic_best_encoder)
 			encoder = funcs->atomic_best_encoder(connector,
 							     connector->state);
-		else
+		else if (funcs->best_encoder)
 			encoder = funcs->best_encoder(connector);
+		else {
+			dump_stack();
+			encoder = drm_encoder_find(connector->dev, NULL, connector->encoder_ids[0]);
+		}
 	}
 
 	if (!encoder || !encoder->possible_crtcs)
