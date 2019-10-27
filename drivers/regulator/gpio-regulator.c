@@ -34,6 +34,8 @@
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
 
 struct gpio_regulator_data {
 	struct regulator_desc desc;

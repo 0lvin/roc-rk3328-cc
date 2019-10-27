@@ -81,6 +81,16 @@ struct vop_misc {
 	struct vop_reg global_regdone_en;
 };
 
+struct vop_csc {
+	struct vop_reg y2r_en;
+	struct vop_reg r2r_en;
+	struct vop_reg r2y_en;
+
+	uint32_t y2r_offset;
+	uint32_t r2r_offset;
+	uint32_t r2y_offset;
+};
+
 struct vop_intr {
 	const int *intrs;
 	uint32_t nintrs;
@@ -124,6 +134,33 @@ struct vop_scl_regs {
 	struct vop_reg scale_cbcr_y;
 };
 
+enum {
+	VOP_CSC_Y2R_BT601,
+	VOP_CSC_Y2R_BT709,
+	VOP_CSC_Y2R_BT2020,
+	VOP_CSC_R2Y_BT601,
+	VOP_CSC_R2Y_BT709,
+	VOP_CSC_R2Y_BT2020,
+	VOP_CSC_R2R_BT2020_TO_BT709,
+	VOP_CSC_R2R_BT709_TO_2020,
+};
+
+enum _vop_overlay_mode {
+	VOP_RGB_DOMAIN,
+	VOP_YUV_DOMAIN
+};
+
+enum _vop_sdr2hdr_func {
+	SDR2HDR_FOR_BT2020,
+	SDR2HDR_FOR_HDR,
+	SDR2HDR_FOR_HLG_HDR,
+};
+
+enum _vop_rgb2rgb_conv_mode {
+	BT709_TO_BT2020,
+	BT2020_TO_BT709,
+};
+
 struct vop_win_phy {
 	const struct vop_scl_regs *scl;
 	const uint32_t *data_formats;
@@ -148,9 +185,18 @@ struct vop_win_phy {
 
 struct vop_win_data {
 	uint32_t base;
-	const struct vop_win_phy *phy;
 	enum drm_plane_type type;
+	const struct vop_win_phy *phy;
+	const struct vop_win_phy **area;
+	const struct vop_csc *csc;
+	unsigned int area_size;
+	u64 feature;
 };
+
+#define WIN_FEATURE_HDR2SDR		BIT(0)
+#define WIN_FEATURE_SDR2HDR		BIT(1)
+#define WIN_FEATURE_PRE_OVERLAY		BIT(2)
+#define WIN_FEATURE_AFBDC		BIT(3)
 
 struct vop_data {
 	uint32_t version;
@@ -161,20 +207,37 @@ struct vop_data {
 	const struct vop_output *output;
 	const struct vop_win_data *win;
 	unsigned int win_size;
+	const struct vop_csc_table *csc_table;
 
 #define VOP_FEATURE_OUTPUT_RGB10	BIT(0)
 #define VOP_FEATURE_INTERNAL_RGB	BIT(1)
 	u64 feature;
 };
 
+#define CVBS_PAL_VDISPLAY		288
+
 /* interrupt define */
 #define DSP_HOLD_VALID_INTR		(1 << 0)
 #define FS_INTR				(1 << 1)
 #define LINE_FLAG_INTR			(1 << 2)
 #define BUS_ERROR_INTR			(1 << 3)
+#define FS_NEW_INTR			(1 << 4)
+#define ADDR_SAME_INTR 			(1 << 5)
+#define LINE_FLAG1_INTR			(1 << 6)
+#define WIN0_EMPTY_INTR			(1 << 7)
+#define WIN1_EMPTY_INTR			(1 << 8)
+#define WIN2_EMPTY_INTR			(1 << 9)
+#define WIN3_EMPTY_INTR			(1 << 10)
+#define HWC_EMPTY_INTR			(1 << 11)
+#define POST_BUF_EMPTY_INTR		(1 << 12)
+#define PWM_GEN_INTR			(1 << 13)
 
 #define INTR_MASK			(DSP_HOLD_VALID_INTR | FS_INTR | \
-					 LINE_FLAG_INTR | BUS_ERROR_INTR)
+					 LINE_FLAG_INTR | BUS_ERROR_INTR | \
+					 FS_NEW_INTR | LINE_FLAG1_INTR | \
+					 WIN0_EMPTY_INTR | WIN1_EMPTY_INTR | \
+					 WIN2_EMPTY_INTR | WIN3_EMPTY_INTR | \
+					 HWC_EMPTY_INTR | POST_BUF_EMPTY_INTR)
 
 #define DSP_HOLD_VALID_INTR_EN(x)	((x) << 4)
 #define FS_INTR_EN(x)			((x) << 5)
@@ -209,11 +272,20 @@ struct vop_data {
 /*
  * display output interface supported by rockchip lcdc
  */
-#define ROCKCHIP_OUT_MODE_P888	0
-#define ROCKCHIP_OUT_MODE_P666	1
-#define ROCKCHIP_OUT_MODE_P565	2
+#define ROCKCHIP_OUT_MODE_P888		0
+#define ROCKCHIP_OUT_MODE_P666		1
+#define ROCKCHIP_OUT_MODE_P565		2
+#define ROCKCHIP_OUT_MODE_S888		8
+#define ROCKCHIP_OUT_MODE_S888_DUMMY	12
+#define ROCKCHIP_OUT_MODE_YUV420	14
 /* for use special outface */
-#define ROCKCHIP_OUT_MODE_AAAA	15
+#define ROCKCHIP_OUT_MODE_AAAA		15
+
+#define ROCKCHIP_OUT_MODE_TYPE(x)	((x) >> 16)
+#define ROCKCHIP_OUT_MODE(x)		((x) & 0xffff)
+#define ROCKCHIP_DSP_MODE(type, mode) \
+		(DRM_MODE_CONNECTOR_##type << 16) | \
+		(ROCKCHIP_OUT_MODE_##mode & 0xffff)
 
 /* output flags */
 #define ROCKCHIP_OUTPUT_DSI_DUAL	BIT(0)
