@@ -801,8 +801,8 @@ config SND_SOC_PCM512x_SPI
 	select REGMAP_SPI
 
 config SND_SOC_RK3328
+	tristate "Rockchip RK3328 audio CODEC"
 	select REGMAP_MMIO
-	tristate "Rockchip RK3328 CODEC"
 
 config SND_SOC_RL6231
 	tristate
