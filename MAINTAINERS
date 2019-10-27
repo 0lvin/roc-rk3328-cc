@@ -854,6 +854,22 @@ S:	Supported
 F:	drivers/iio/adc/ad7124.c
 F:	Documentation/devicetree/bindings/iio/adc/adi,ad7124.txt
 
+ANALOG DEVICES INC AD7606 DRIVER
+M:	Stefan Popa <stefan.popa@analog.com>
+L:	linux-iio@vger.kernel.org
+W:	http://ez.analog.com/community/linux-device-drivers
+S:	Supported
+F:	drivers/iio/adc/ad7606.c
+F:	Documentation/devicetree/bindings/iio/adc/ad7606.txt
+
+ANALOG DEVICES INC AD7768-1 DRIVER
+M:	Stefan Popa <stefan.popa@analog.com>
+L:	linux-iio@vger.kernel.org
+W:	http://ez.analog.com/community/linux-device-drivers
+S:	Supported
+F:	drivers/iio/adc/ad7768-1.c
+F:	Documentation/devicetree/bindings/iio/adc/adi,ad7768-1.txt
+
 ANALOG DEVICES INC AD9389B DRIVER
 M:	Hans Verkuil <hans.verkuil@cisco.com>
 L:	linux-media@vger.kernel.org
@@ -1883,10 +1899,11 @@ F:	drivers/usb/host/ehci-w90x900.c
 F:	drivers/video/fbdev/nuc900fb.c
 
 ARM/OPENMOKO NEO FREERUNNER (GTA02) MACHINE SUPPORT
-M:	Nelson Castillo <arhuaco@freaks-unidos.net>
 L:	openmoko-kernel@lists.openmoko.org (subscribers-only)
 W:	http://wiki.openmoko.org/wiki/Neo_FreeRunner
-S:	Supported
+S:	Orphan
+F:	arch/arm/mach-s3c24xx/mach-gta02.c
+F:	arch/arm/mach-s3c24xx/gta02.h
 
 ARM/Orion SoC/Technologic Systems TS-78xx platform support
 M:	Alexander Clouter <alex@digriz.org.uk>
@@ -3954,9 +3971,10 @@ M:	Johannes Weiner <hannes@cmpxchg.org>
 L:	cgroups@vger.kernel.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/tj/cgroup.git
 S:	Maintained
-F:	Documentation/cgroup*
+F:	Documentation/admin-guide/cgroup-v2.rst
+F:	Documentation/cgroup-v1/
 F:	include/linux/cgroup*
-F:	kernel/cgroup*
+F:	kernel/cgroup/
 
 CONTROL GROUP - CPUSET
 M:	Li Zefan <lizefan@huawei.com>
@@ -5931,6 +5949,7 @@ L:	linux-fsdevel@vger.kernel.org
 S:	Maintained
 F:	fs/*
 F:	include/linux/fs.h
+F:	include/linux/fs_types.h
 F:	include/uapi/linux/fs.h
 
 FINTEK F75375S HARDWARE MONITOR AND FAN CONTROLLER DRIVER
@@ -6699,6 +6718,15 @@ F:	drivers/clocksource/h8300_*.c
 F:	drivers/clk/h8300/
 F:	drivers/irqchip/irq-renesas-h8*.c
 
+HABANALABS PCI DRIVER
+M:	Oded Gabbay <oded.gabbay@gmail.com>
+T:	git https://github.com/HabanaAI/linux.git
+S:	Supported
+F:	drivers/misc/habanalabs/
+F:	include/uapi/misc/habanalabs.h
+F:	Documentation/ABI/testing/sysfs-driver-habanalabs
+F:	Documentation/ABI/testing/debugfs-driver-habanalabs
+
 HACKRF MEDIA DRIVER
 M:	Antti Palosaari <crope@iki.fi>
 L:	linux-media@vger.kernel.org
@@ -7056,7 +7084,7 @@ M:	Haiyang Zhang <haiyangz@microsoft.com>
 M:	Stephen Hemminger <sthemmin@microsoft.com>
 M:	Sasha Levin <sashal@kernel.org>
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/hyperv/linux.git
-L:	devel@linuxdriverproject.org
+L:	linux-hyperv@vger.kernel.org
 S:	Supported
 F:	Documentation/networking/device_drivers/microsoft/netvsc.txt
 F:	arch/x86/include/asm/mshyperv.h
@@ -7940,6 +7968,16 @@ M:	David Cohen <david.a.cohen@linux.intel.com>
 L:	linux-gpio@vger.kernel.org
 S:	Maintained
 F:	drivers/gpio/gpio-intel-mid.c
+
+INTERCONNECT API
+M:	Georgi Djakov <georgi.djakov@linaro.org>
+S:	Maintained
+F:	Documentation/interconnect/
+F:	Documentation/devicetree/bindings/interconnect/
+F:	drivers/interconnect/
+F:	include/dt-bindings/interconnect/
+F:	include/linux/interconnect-provider.h
+F:	include/linux/interconnect.h
 
 INVENSENSE MPU-3050 GYROSCOPE DRIVER
 M:	Linus Walleij <linus.walleij@linaro.org>
@@ -9142,6 +9180,14 @@ T:	git git://git.armlinux.org.uk/~rmk/linux-arm.git drm-armada-fixes
 F:	drivers/gpu/drm/armada/
 F:	include/uapi/drm/armada_drm.h
 F:	Documentation/devicetree/bindings/display/armada/
+
+MARVELL ARMADA 3700 PHY DRIVERS
+M:	Miquel Raynal <miquel.raynal@bootlin.com>
+S:	Maintained
+F:	drivers/phy/marvell/phy-mvebu-a3700-comphy.c
+F:	drivers/phy/marvell/phy-mvebu-a3700-utmi.c
+F:	Documentation/devicetree/bindings/phy/phy-mvebu-comphy.txt
+F:	Documentation/devicetree/bindings/phy/phy-mvebu-utmi.txt
 
 MARVELL CRYPTO DRIVER
 M:	Boris Brezillon <bbrezillon@kernel.org>
@@ -14600,11 +14646,6 @@ L:	linux-wireless@vger.kernel.org
 S:	Supported
 F:	drivers/staging/wilc1000/
 
-STAGING - XGI Z7,Z9,Z11 PCI DISPLAY DRIVER
-M:	Arnaud Patard <arnaud.patard@rtp-net.org>
-S:	Odd Fixes
-F:	drivers/staging/xgifb/
-
 STAGING SUBSYSTEM
 M:	Greg Kroah-Hartman <gregkh@linuxfoundation.org>
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/gregkh/staging.git
@@ -15199,6 +15240,13 @@ L:	alsa-devel@alsa-project.org (moderated for non-subscribers)
 S:	Maintained
 F:	sound/soc/ti/
 
+Texas Instruments' DAC7612 DAC Driver
+M:	Ricardo Ribalda <ricardo@ribalda.com>
+L:	linux-iio@vger.kernel.org
+S:	Supported
+F:	drivers/iio/dac/ti-dac7612.c
+F:	Documentation/devicetree/bindings/iio/dac/ti,dac7612.txt
+
 THANKO'S RAREMONO AM/FM/SW RADIO RECEIVER USB DRIVER
 M:	Hans Verkuil <hverkuil@xs4all.nl>
 L:	linux-media@vger.kernel.org
@@ -15510,12 +15558,11 @@ F:	mm/shmem.c
 TOMOYO SECURITY MODULE
 M:	Kentaro Takeda <takedakn@nttdata.co.jp>
 M:	Tetsuo Handa <penguin-kernel@I-love.SAKURA.ne.jp>
-L:	tomoyo-dev-en@lists.sourceforge.jp (subscribers-only, for developers in English)
-L:	tomoyo-users-en@lists.sourceforge.jp (subscribers-only, for users in English)
-L:	tomoyo-dev@lists.sourceforge.jp (subscribers-only, for developers in Japanese)
-L:	tomoyo-users@lists.sourceforge.jp (subscribers-only, for users in Japanese)
-W:	http://tomoyo.sourceforge.jp/
-T:	quilt http://svn.sourceforge.jp/svnroot/tomoyo/trunk/2.5.x/tomoyo-lsm/patches/
+L:	tomoyo-dev-en@lists.osdn.me (subscribers-only, for developers in English)
+L:	tomoyo-users-en@lists.osdn.me (subscribers-only, for users in English)
+L:	tomoyo-dev@lists.osdn.me (subscribers-only, for developers in Japanese)
+L:	tomoyo-users@lists.osdn.me (subscribers-only, for users in Japanese)
+W:	https://tomoyo.osdn.jp/
 S:	Maintained
 F:	security/tomoyo/
 
