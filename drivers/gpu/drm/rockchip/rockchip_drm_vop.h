@@ -60,6 +60,7 @@ struct vop_output {
 	struct vop_reg edp_en;
 	struct vop_reg hdmi_en;
 	struct vop_reg mipi_en;
+	struct vop_reg mipi_dual_channel_en;
 	struct vop_reg rgb_en;
 };
 
@@ -285,6 +286,9 @@ struct vop_data {
 #define ROCKCHIP_DSP_MODE(type, mode) \
 		(DRM_MODE_CONNECTOR_##type << 16) | \
 		(ROCKCHIP_OUT_MODE_##mode & 0xffff)
+
+/* output flags */
+#define ROCKCHIP_OUTPUT_DSI_DUAL	BIT(0)
 
 enum alpha_mode {
 	ALPHA_STRAIGHT,
