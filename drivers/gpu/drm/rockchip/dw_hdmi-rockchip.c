@@ -49,7 +49,6 @@
 #define RK3328_HDMI_SCL_5V		BIT(9)
 #define RK3328_HDMI_HPD_5V		BIT(8)
 #define RK3328_IO_3V_DOMAIN		(7 << (9 + 16))
-#define RK3328_IO_5V_DOMAIN		((7 << 9) | (3 << (9 + 16)))
 #define RK3328_HPD_3V			(BIT(8 + 16) | BIT(13 + 16))
 
 #define RK3399_GRF_SOC_CON20		0x6250
@@ -138,54 +137,6 @@ inno_dw_hdmi_phy_init(struct dw_hdmi *dw_hdmi, void *data,
 	inno_dw_hdmi_phy_disable(dw_hdmi, data);
 	dw_hdmi_set_high_tmds_clock_ratio(dw_hdmi);
 	return phy_power_on(hdmi->phy);
-}
-
-static enum drm_connector_status
-inno_dw_hdmi_phy_read_hpd(struct dw_hdmi *dw_hdmi, void *data)
-{
-	struct rockchip_hdmi *hdmi = (struct rockchip_hdmi *)data;
-	enum drm_connector_status status;
-
-	status = dw_hdmi_phy_read_hpd(dw_hdmi, data);
-
-	if (status == connector_status_connected)
-		regmap_write(hdmi->regmap,
-			     RK3328_GRF_SOC_CON4,
-			     RK3328_IO_5V_DOMAIN);
-	else
-		regmap_write(hdmi->regmap,
-			     RK3328_GRF_SOC_CON4,
-			     RK3328_IO_3V_DOMAIN);
-	return status;
-}
-
-static int inno_dw_hdmi_init(struct rockchip_hdmi *hdmi)
-{
-	int ret;
-
-	ret = clk_prepare_enable(hdmi->grf_clk);
-	if (ret < 0) {
-		DRM_DEV_ERROR(hdmi->dev, "failed to enable grfclk %d\n", ret);
-		return -EPROBE_DEFER;
-	}
-	/* Map HPD pin to 3V io */
-	regmap_write(hdmi->regmap,
-		     RK3328_GRF_SOC_CON4,
-		     RK3328_IO_3V_DOMAIN |
-		     RK3328_HPD_3V);
-	/* Map ddc pin to 5V io */
-	regmap_write(hdmi->regmap,
-		RK3328_GRF_SOC_CON3,
-		HIWORD_UPDATE(0, RK3328_HDMI_SDA5V_GRF | RK3328_HDMI_SCL5V_GRF |
-				 RK3328_HDMI_HPD5V_GRF |
-				 RK3328_HDMI_CEC5V_GRF));
-	regmap_write(hdmi->regmap,
-		RK3328_GRF_SOC_CON2,
-		HIWORD_UPDATE(RK3328_HDMI_SDAIN_MSK | RK3328_HDMI_SCLIN_MSK,
-			      RK3328_HDMI_SDAIN_MSK | RK3328_HDMI_SCLIN_MSK |
-			      RK3328_HDMI_HPD_IOE));
-	clk_disable_unprepare(hdmi->grf_clk);
-	return 0;
 }
 
 /*
@@ -1042,12 +993,6 @@ static const struct drm_encoder_helper_funcs dw_hdmi_rockchip_encoder_helper_fun
 	.atomic_check = dw_hdmi_rockchip_encoder_atomic_check,
 };
 
-static const struct dw_hdmi_phy_ops inno_dw_hdmi_phy_ops = {
-	.init		= inno_dw_hdmi_phy_init,
-	.disable	= inno_dw_hdmi_phy_disable,
-	.read_hpd	= inno_dw_hdmi_phy_read_hpd,
-};
-
 static int dw_hdmi_rockchip_genphy_init(struct dw_hdmi *dw_hdmi, void *data,
 			     struct drm_display_mode *mode)
 {
@@ -1082,6 +1027,35 @@ dw_hdmi_rk3328_read_hpd(struct dw_hdmi *dw_hdmi, void *data)
 			HIWORD_UPDATE(0, RK3328_HDMI_SDA_5V |
 					 RK3328_HDMI_SCL_5V));
 	return status;
+}
+
+static int inno_dw_hdmi_init(struct rockchip_hdmi *hdmi)
+{
+	int ret;
+
+	ret = clk_prepare_enable(hdmi->grf_clk);
+	if (ret < 0) {
+		DRM_DEV_ERROR(hdmi->dev, "failed to enable grfclk %d\n", ret);
+		return -EPROBE_DEFER;
+	}
+	/* Map HPD pin to 3V io */
+	regmap_write(hdmi->regmap,
+		     RK3328_GRF_SOC_CON4,
+		     RK3328_IO_3V_DOMAIN |
+		     RK3328_HPD_3V);
+	/* Map ddc pin to 5V io */
+	regmap_write(hdmi->regmap,
+		RK3328_GRF_SOC_CON3,
+		HIWORD_UPDATE(0, RK3328_HDMI_SDA5V_GRF | RK3328_HDMI_SCL5V_GRF |
+				 RK3328_HDMI_HPD5V_GRF |
+				 RK3328_HDMI_CEC5V_GRF));
+	regmap_write(hdmi->regmap,
+		RK3328_GRF_SOC_CON2,
+		HIWORD_UPDATE(RK3328_HDMI_SDAIN_MSK | RK3328_HDMI_SCLIN_MSK,
+			      RK3328_HDMI_SDAIN_MSK | RK3328_HDMI_SCLIN_MSK |
+			      RK3328_HDMI_HPD_IOE));
+	clk_disable_unprepare(hdmi->grf_clk);
+	return 0;
 }
 
 static void dw_hdmi_rk3328_setup_hpd(struct dw_hdmi *dw_hdmi, void *data)
@@ -1125,6 +1099,12 @@ static const struct dw_hdmi_plat_data rk3288_hdmi_drv_data = {
 	.get_output_bus_format = dw_hdmi_rockchip_get_output_bus_format,
 	.get_enc_in_encoding = dw_hdmi_rockchip_get_enc_in_encoding,
 	.get_enc_out_encoding = dw_hdmi_rockchip_get_enc_out_encoding,
+};
+
+static const struct dw_hdmi_phy_ops inno_dw_hdmi_phy_ops = {
+	.init		= inno_dw_hdmi_phy_init,
+	.disable	= inno_dw_hdmi_phy_disable,
+	.read_hpd	= dw_hdmi_rk3328_read_hpd,
 };
 
 static const struct dw_hdmi_phy_ops rk3328_hdmi_phy_ops = {
