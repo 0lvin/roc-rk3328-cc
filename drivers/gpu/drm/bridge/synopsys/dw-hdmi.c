@@ -155,11 +155,9 @@ static const u16 csc_coeff_rgb_in_eitu709[3][4] = {
 struct hdmi_vmode {
 	bool mdataenablepolarity;
 
-	unsigned int previous_pixelclock;
 	unsigned int mpixelclock;
 	unsigned int mpixelrepetitioninput;
 	unsigned int mpixelrepetitionoutput;
-	unsigned int previous_tmdsclock;
 	unsigned int mtmdsclock;
 };
 
@@ -1911,13 +1909,11 @@ static void hdmi_av_composer(struct dw_hdmi *hdmi,
 
 	vmode->mtmdsclock = vmode->mpixelclock = mode->clock * 1000;
 
-	vmode->previous_pixelclock = vmode->mpixelclock;
 	vmode->mpixelclock = mode->crtc_clock * 1000;
 	if ((mode->flags & DRM_MODE_FLAG_3D_MASK) ==
 		DRM_MODE_FLAG_3D_FRAME_PACKING)
 		vmode->mpixelclock *= 2;
 	dev_dbg(hdmi->dev, "final pixclk = %d\n", vmode->mpixelclock);
-	vmode->previous_tmdsclock = vmode->mtmdsclock;
 	vmode->mtmdsclock = hdmi_get_tmdsclock(hdmi, vmode->mpixelclock);
 
 	if (hdmi_bus_fmt_is_yuv420(hdmi->hdmi_data.enc_out_bus_format))
@@ -2167,7 +2163,6 @@ static int dw_hdmi_setup(struct dw_hdmi *hdmi, struct drm_display_mode *mode)
 {
 	int ret;
 	void *data = hdmi->plat_data->phy_data;
-	bool need_delay = false;
 
 	hdmi_disable_overflow_interrupts(hdmi);
 
@@ -2240,19 +2235,11 @@ static int dw_hdmi_setup(struct dw_hdmi *hdmi, struct drm_display_mode *mode)
 	hdmi_av_composer(hdmi, mode);
 
 	/* HDMI Initializateion Step B.2 */
-	if (!hdmi->phy.enabled ||
-	    hdmi->hdmi_data.video_mode.previous_pixelclock !=
-	    hdmi->hdmi_data.video_mode.mpixelclock ||
-	    hdmi->hdmi_data.video_mode.previous_tmdsclock !=
-	    hdmi->hdmi_data.video_mode.mtmdsclock) {
-		ret = hdmi->phy.ops->init(hdmi, hdmi->phy.data,
-					  &hdmi->previous_mode);
-		if (ret)
-			return ret;
-		hdmi->phy.enabled = true;
-	} else {
-		need_delay = true;
-	}
+	ret = hdmi->phy.ops->init(hdmi, hdmi->phy.data, &hdmi->previous_mode);
+	if (ret)
+		return ret;
+	hdmi->phy.enabled = true;
+
 	/* HDMI Initialization Step B.3 */
 	dw_hdmi_enable_video_path(hdmi);
 
@@ -2283,9 +2270,6 @@ static int dw_hdmi_setup(struct dw_hdmi *hdmi, struct drm_display_mode *mode)
 
 	dw_hdmi_clear_overflow(hdmi);
 
-	/* XXX: Add delay to make csc work before unmute video. */
-	if (need_delay)
-		msleep(50);
 	return 0;
 }
 
