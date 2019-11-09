@@ -49,13 +49,25 @@
 
 #define MAX_VOPS	2
 
-#define VOP_WIN_SET(x, win, name, v) \
+#define VOP_WIN_SET(vop, win, name, v) \
 		vop_reg_set(vop, &win->phy->name, win->base, ~0, v, #name)
-#define VOP_SCL_SET(x, win, name, v) \
+#define VOP_SCL_SET(vop, win, name, v) \
 		vop_reg_set(vop, &win->phy->scl->name, win->base, ~0, v, #name)
-#define VOP_SCL_SET_EXT(x, win, name, v) \
+#define VOP_SCL_SET_EXT(vop, win, name, v) \
 		vop_reg_set(vop, &win->phy->scl->ext->name, \
 			    win->base, ~0, v, #name)
+
+#define VOP_WIN_YUV2YUV_SET(vop, win_yuv2yuv, name, v) \
+	do { \
+		if (win_yuv2yuv && win_yuv2yuv->name.mask) \
+			vop_reg_set(vop, &win_yuv2yuv->name, 0, ~0, v, #name); \
+	} while (0)
+
+#define VOP_WIN_YUV2YUV_COEFFICIENT_SET(vop, win_yuv2yuv, name, v) \
+	do { \
+		if (win_yuv2yuv && win_yuv2yuv->phy->name.mask) \
+			vop_reg_set(vop, &win_yuv2yuv->phy->name, win_yuv2yuv->base, ~0, v, #name); \
+	} while (0)
 
 #define VOP_INTR_SET_MASK(vop, name, mask, v) \
 		vop_reg_set(vop, &vop->data->intr->name, 0, mask, v, #name)
@@ -77,8 +89,8 @@
 #define VOP_INTR_GET_TYPE(vop, name, type) \
 		vop_get_intr_type(vop, &vop->data->intr->name, type)
 
-#define VOP_WIN_GET(x, win, name) \
-		vop_read_reg(x, win->offset, win->phy->name)
+#define VOP_WIN_GET(vop, win, name) \
+		vop_read_reg(vop, win->offset, win->phy->name)
 
 #define VOP_WIN_GET_YRGBADDR(vop, win) \
 		vop_readl(vop, win->base + win->phy->yrgb_mst.offset)
@@ -89,6 +101,18 @@
 #define to_vop(x) container_of(x, struct vop, crtc)
 #define to_vop_win(x) container_of(x, struct vop_win, base)
 
+/*
+ * The coefficients of the following matrix are all fixed points.
+ * The format is S2.10 for the 3x3 part of the matrix, and S9.12 for the offsets.
+ * They are all represented in two's complement.
+ */
+static const uint32_t bt601_yuv2rgb[] = {
+	0x4A8, 0x0,    0x662,
+	0x4A8, 0x1E6F, 0x1CBF,
+	0x4A8, 0x812,  0x0,
+	0x321168, 0x0877CF, 0x2EB127
+};
+
 enum vop_pending {
 	VOP_PENDING_FB_UNREF,
 };
@@ -96,6 +120,7 @@ enum vop_pending {
 struct vop_win {
 	struct drm_plane base;
 	const struct vop_win_data *data;
+	const struct vop_win_yuv2yuv_data *yuv2yuv_data;
 	struct vop *vop;
 };
 
@@ -723,6 +748,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	struct drm_crtc *crtc = state->crtc;
 	struct vop_win *vop_win = to_vop_win(plane);
 	const struct vop_win_data *win = vop_win->data;
+	const struct vop_win_yuv2yuv_data *win_yuv2yuv = vop_win->yuv2yuv_data;
 	struct vop *vop = to_vop(state->crtc);
 	struct drm_framebuffer *fb = state->fb;
 	unsigned int actual_w, actual_h;
@@ -738,6 +764,8 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	bool rb_swap;
 	int win_index = VOP_WIN_TO_INDEX(vop_win);
 	int format;
+	int is_yuv = fb->format->is_yuv;
+	int i;
 
 	/*
 	 * can't update plane when vop is disabled.
@@ -778,7 +806,9 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	VOP_WIN_SET(vop, win, format, format);
 	VOP_WIN_SET(vop, win, yrgb_vir, DIV_ROUND_UP(fb->pitches[0], 4));
 	VOP_WIN_SET(vop, win, yrgb_mst, dma_addr);
-	if (fb->format->is_yuv) {
+	VOP_WIN_YUV2YUV_SET(vop, win_yuv2yuv, y2r_en, is_yuv);
+
+	if (is_yuv) {
 		int hsub = drm_format_horz_chroma_subsampling(fb->format->format);
 		int vsub = drm_format_vert_chroma_subsampling(fb->format->format);
 		int bpp = fb->format->cpp[1];
@@ -792,6 +822,13 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 		dma_addr = rk_uv_obj->dma_addr + offset + fb->offsets[1];
 		VOP_WIN_SET(vop, win, uv_vir, DIV_ROUND_UP(fb->pitches[1], 4));
 		VOP_WIN_SET(vop, win, uv_mst, dma_addr);
+
+		for (i = 0; i < NUM_YUV2YUV_COEFFICIENTS; i++) {
+			VOP_WIN_YUV2YUV_COEFFICIENT_SET(vop,
+							win_yuv2yuv,
+							y2r_coefficients[i],
+							bt601_yuv2rgb[i]);
+		}
 	}
 
 	if (win->phy->scl)
@@ -1614,6 +1651,7 @@ static void vop_win_init(struct vop *vop)
 
 		vop_win->data = win_data;
 		vop_win->vop = vop;
+		vop_win->yuv2yuv_data = &vop_data->win_yuv2yuv[i];
 	}
 }
 
