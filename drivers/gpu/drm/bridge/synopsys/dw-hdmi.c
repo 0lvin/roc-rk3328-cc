@@ -11,44 +11,47 @@
  * (at your option) any later version.
  *
  */
-#include <linux/clk.h>
+#include <linux/module.h>
+#include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/err.h>
+#include <linux/clk.h>
 #include <linux/hdmi.h>
-#include <linux/irq.h>
-#include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of_device.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/regmap.h>
 #include <linux/spinlock.h>
 
-#include <media/cec-notifier.h>
-
 #include <drm/drm_of.h>
 #include <drm/drmP.h>
-
-#include <drm/bridge/dw_hdmi.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_encoder_slave.h>
-#include <drm/drm_probe_helper.h>
 #include <drm/drm_scdc_helper.h>
-
+#include <drm/drm_probe_helper.h>
+#include <drm/bridge/dw_hdmi.h>
+#include <drm/drm_scdc_helper.h>
 #include <uapi/linux/media-bus-format.h>
 #include <uapi/linux/videodev2.h>
 
 #include <uapi/linux/media-bus-format.h>
 #include <uapi/linux/videodev2.h>
 
+#include "dw-hdmi.h"
 #include "dw-hdmi-audio.h"
 #include "dw-hdmi-cec.h"
-#include "dw-hdmi.h"
+
 #include <media/cec-notifier.h>
 
 #define DDC_SEGMENT_ADDR	0x30
 
 #define HDMI_EDID_LEN		512
+
+/* DW-HDMI Controller >= 0x200a are at least compliant with SCDC version 1 */
+#define SCDC_MIN_SOURCE_VERSION	0x1
+
+#define HDMI14_MAX_TMDSCLK	340000000
 
 enum hdmi_datamap {
 	RGB444_8B = 0x01,
@@ -1276,7 +1279,7 @@ void dw_hdmi_set_high_tmds_clock_ratio(struct dw_hdmi *hdmi)
 
 	/* Control for TMDS Bit Period/TMDS Clock-Period Ratio */
 	if (hdmi->connector.display_info.hdmi.scdc.supported) {
-		if (mtmdsclock > 340000000)
+		if (mtmdsclock > HDMI14_MAX_TMDSCLK)
 			drm_scdc_set_high_tmds_clock_ratio(hdmi->ddc, 1);
 		else
 			drm_scdc_set_high_tmds_clock_ratio(hdmi->ddc, 0);
@@ -1500,13 +1503,7 @@ static int hdmi_phy_configure(struct dw_hdmi *hdmi)
 
 	dw_hdmi_phy_power_off(hdmi);
 
-	/* Control for TMDS Bit Period/TMDS Clock-Period Ratio */
-	if (hdmi->connector.display_info.hdmi.scdc.supported) {
-		if (mtmdsclock > 340000000)
-			drm_scdc_set_high_tmds_clock_ratio(hdmi->ddc, 1);
-		else
-			drm_scdc_set_high_tmds_clock_ratio(hdmi->ddc, 0);
-	}
+	dw_hdmi_set_high_tmds_clock_ratio(hdmi);
 
 	/* Leave low power consumption mode by asserting SVSRET. */
 	if (phy->has_svsret)
@@ -1530,7 +1527,7 @@ static int hdmi_phy_configure(struct dw_hdmi *hdmi)
 	}
 
 	/* Wait for resuming transmission of TMDS clock and data */
-	if (mtmdsclock > 340000000)
+	if (mpixelclock > HDMI14_MAX_TMDSCLK)
 		msleep(100);
 
 	return dw_hdmi_phy_power_on(hdmi);
@@ -1923,7 +1920,9 @@ static void hdmi_av_composer(struct dw_hdmi *hdmi,
 	dev_dbg(hdmi->dev, "final tmdsclk = %d\n", vmode->mtmdsclock);
 
 	/* Set up HDMI_FC_INVIDCONF */
-	inv_val = (hdmi->hdmi_data.hdcp_enable ?
+	inv_val = (hdmi->hdmi_data.hdcp_enable ||
+		   vmode->mpixelclock > HDMI14_MAX_TMDSCLK ||
+		   hdmi_info->scdc.scrambling.low_rates ?
 		HDMI_FC_INVIDCONF_HDCP_KEEPOUT_ACTIVE :
 		HDMI_FC_INVIDCONF_HDCP_KEEPOUT_INACTIVE);
 
@@ -1993,14 +1992,32 @@ static void hdmi_av_composer(struct dw_hdmi *hdmi,
 
 	/* Scrambling Control */
 	if (hdmi_info->scdc.supported) {
-		if (vmode->mtmdsclock > 340000000 ||
-		    (hdmi_info->scdc.scrambling.low_rates &&
-		     hdmi->scramble_low_rates)) {
+		if (vmode->mpixelclock > HDMI14_MAX_TMDSCLK ||
+		    hdmi_info->scdc.scrambling.low_rates) {
+			/*
+			 * HDMI2.0 Specifies the following procedure:
+			 * After the Source Device has determined that
+			 * SCDC_Present is set (=1), the Source Device should
+			 * write the accurate Version of the Source Device
+			 * to the Source Version field in the SCDCS.
+			 * Source Devices compliant shall set the
+			 * Source Version = 1.
+			 */
 			drm_scdc_readb(&hdmi->i2c->adap, SCDC_SINK_VERSION,
 				       &bytes);
 			drm_scdc_writeb(&hdmi->i2c->adap, SCDC_SOURCE_VERSION,
-					bytes);
+				min_t(u8, bytes, SCDC_MIN_SOURCE_VERSION));
+
+			/* Enabled Scrambling in the Sink */
 			drm_scdc_set_scrambling(&hdmi->i2c->adap, 1);
+
+			/*
+			 * To activate the scrambler feature, you must ensure
+			 * that the quasi-static configuration bit
+			 * fc_invidconf.HDCP_keepout is set at configuration
+			 * time, before the required mc_swrstzreq.tmdsswrst_req
+			 * reset request is issued.
+			 */
 			hdmi_writeb(hdmi, (u8)~HDMI_MC_SWRSTZ_TMDSSWRST_REQ,
 				    HDMI_MC_SWRSTZ);
 			hdmi_writeb(hdmi, 1, HDMI_FC_SCRAMBLER_CTRL);
