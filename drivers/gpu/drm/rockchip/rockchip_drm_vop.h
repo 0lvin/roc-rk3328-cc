@@ -134,33 +134,6 @@ struct vop_scl_regs {
 	struct vop_reg scale_cbcr_y;
 };
 
-enum {
-	VOP_CSC_Y2R_BT601,
-	VOP_CSC_Y2R_BT709,
-	VOP_CSC_Y2R_BT2020,
-	VOP_CSC_R2Y_BT601,
-	VOP_CSC_R2Y_BT709,
-	VOP_CSC_R2Y_BT2020,
-	VOP_CSC_R2R_BT2020_TO_BT709,
-	VOP_CSC_R2R_BT709_TO_2020,
-};
-
-enum _vop_overlay_mode {
-	VOP_RGB_DOMAIN,
-	VOP_YUV_DOMAIN
-};
-
-enum _vop_sdr2hdr_func {
-	SDR2HDR_FOR_BT2020,
-	SDR2HDR_FOR_HDR,
-	SDR2HDR_FOR_HLG_HDR,
-};
-
-enum _vop_rgb2rgb_conv_mode {
-	BT709_TO_BT2020,
-	BT2020_TO_BT709,
-};
-
 struct vop_win_phy {
 	const struct vop_scl_regs *scl;
 	const uint32_t *data_formats;
@@ -207,7 +180,6 @@ struct vop_data {
 	const struct vop_output *output;
 	const struct vop_win_data *win;
 	unsigned int win_size;
-	const struct vop_csc_table *csc_table;
 
 #define VOP_FEATURE_OUTPUT_RGB10	BIT(0)
 #define VOP_FEATURE_INTERNAL_RGB	BIT(1)
