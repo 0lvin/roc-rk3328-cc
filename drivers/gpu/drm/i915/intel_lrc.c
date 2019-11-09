@@ -133,7 +133,6 @@
  */
 #include <linux/interrupt.h>
 
-#include <drm/drmP.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
 #include "i915_gem_render_state.h"
@@ -2273,13 +2272,9 @@ static int logical_ring_init(struct intel_engine_cs *engine)
 
 int logical_render_ring_init(struct intel_engine_cs *engine)
 {
-	struct drm_i915_private *dev_priv = engine->i915;
 	int ret;
 
 	logical_ring_setup(engine);
-
-	if (HAS_L3_DPF(dev_priv))
-		engine->irq_keep_mask |= GT_RENDER_L3_PARITY_ERROR_INTERRUPT;
 
 	/* Override some for render ring. */
 	engine->init_context = gen8_init_rcs_context;
