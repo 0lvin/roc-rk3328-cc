@@ -978,6 +978,15 @@ err:
 	return timing;
 }
 
+#ifdef CONFIG_DRM
+struct drm_device *drm_device_get_by_name(const char *name);
+#else
+static inline struct drm_device *drm_device_get_by_name(const char *name)
+{
+	return NULL;
+}
+#endif
+
 static int rk_drm_get_lcdc_type(void)
 {
 	struct drm_device *drm;

@@ -93,27 +93,11 @@ struct dma_buf_attachment;
 struct pci_dev;
 struct pci_controller;
 
-#ifdef CONFIG_DRM
-struct drm_device *drm_device_get_by_name(const char *name);
-#else
-static inline struct drm_device *drm_device_get_by_name(const char *name)
-{
-	return NULL;
-}
-#endif
-
-/* returns true if currently okay to sleep */
-static inline bool drm_can_sleep(void)
-{
-	if (in_atomic() || in_dbg_master() || irqs_disabled())
-		return false;
-	return true;
-}
-
-#if defined(CONFIG_DRM_DEBUG_SELFTEST_MODULE)
-#define EXPORT_SYMBOL_FOR_TESTS_ONLY(x) EXPORT_SYMBOL(x)
-#else
-#define EXPORT_SYMBOL_FOR_TESTS_ONLY(x)
-#endif
+/*
+ * NOTE: drmP.h is obsolete - do NOT add anything to this file
+ *
+ * Do not include drmP.h in new files.
+ * Work is ongoing to remove drmP.h includes from existing files
+ */
 
 #endif
