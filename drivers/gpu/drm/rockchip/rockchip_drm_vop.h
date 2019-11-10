@@ -23,6 +23,8 @@
 #define VOP_MAJOR(version)		((version) >> 8)
 #define VOP_MINOR(version)		((version) & 0xff)
 
+#define NUM_YUV2YUV_COEFFICIENTS 12
+
 enum vop_data_format {
 	VOP_FMT_ARGB8888 = 0,
 	VOP_FMT_RGB888,
@@ -134,31 +136,8 @@ struct vop_scl_regs {
 	struct vop_reg scale_cbcr_y;
 };
 
-enum {
-	VOP_CSC_Y2R_BT601,
-	VOP_CSC_Y2R_BT709,
-	VOP_CSC_Y2R_BT2020,
-	VOP_CSC_R2Y_BT601,
-	VOP_CSC_R2Y_BT709,
-	VOP_CSC_R2Y_BT2020,
-	VOP_CSC_R2R_BT2020_TO_BT709,
-	VOP_CSC_R2R_BT709_TO_2020,
-};
-
-enum _vop_overlay_mode {
-	VOP_RGB_DOMAIN,
-	VOP_YUV_DOMAIN
-};
-
-enum _vop_sdr2hdr_func {
-	SDR2HDR_FOR_BT2020,
-	SDR2HDR_FOR_HDR,
-	SDR2HDR_FOR_HLG_HDR,
-};
-
-enum _vop_rgb2rgb_conv_mode {
-	BT709_TO_BT2020,
-	BT2020_TO_BT709,
+struct vop_yuv2yuv_phy {
+	struct vop_reg y2r_coefficients[NUM_YUV2YUV_COEFFICIENTS];
 };
 
 struct vop_win_phy {
@@ -177,10 +156,18 @@ struct vop_win_phy {
 	struct vop_reg uv_mst;
 	struct vop_reg yrgb_vir;
 	struct vop_reg uv_vir;
+	struct vop_reg y_mir_en;
+	struct vop_reg x_mir_en;
 
 	struct vop_reg dst_alpha_ctl;
 	struct vop_reg src_alpha_ctl;
 	struct vop_reg channel;
+};
+
+struct vop_win_yuv2yuv_data {
+	uint32_t base;
+	const struct vop_yuv2yuv_phy *phy;
+	struct vop_reg y2r_en;
 };
 
 struct vop_win_data {
@@ -205,9 +192,9 @@ struct vop_data {
 	const struct vop_misc *misc;
 	const struct vop_modeset *modeset;
 	const struct vop_output *output;
+	const struct vop_win_yuv2yuv_data *win_yuv2yuv;
 	const struct vop_win_data *win;
 	unsigned int win_size;
-	const struct vop_csc_table *csc_table;
 
 #define VOP_FEATURE_OUTPUT_RGB10	BIT(0)
 #define VOP_FEATURE_INTERNAL_RGB	BIT(1)
