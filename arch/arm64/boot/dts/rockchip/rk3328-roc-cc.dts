@@ -167,17 +167,9 @@
 		regulator-boot-on;
 	};
 
-	wireless-wlan {
-		compatible = "wlan-platdata";
-		rockchip,grf = <&grf>;
-		wifi_chip_type = "ap6354";
-		sdio_vref = <1800>;
-		WIFI,host_wake_irq = <&gpio1 19 GPIO_ACTIVE_HIGH>;
-		status = "disabled";
-	};
-
 	leds {
 		compatible = "gpio-leds";
+
 		power {
 			label = "firefly:blue:power";
 			linux,default-trigger = "ir-power-click";
@@ -188,7 +180,7 @@
 
 		user {
 			label = "firefly:yellow:user";
-            linux,default-trigger = "ir-user-click";
+			linux,default-trigger = "mmc1";
 			gpios = <&rk805 0 GPIO_ACTIVE_LOW>;
 			default-state = "off";
 			mode = <0x05>;
