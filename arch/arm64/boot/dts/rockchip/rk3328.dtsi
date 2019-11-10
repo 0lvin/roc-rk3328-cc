@@ -1004,6 +1004,7 @@
 		reset-names = "hdmi",
 			      "hdmiphy";
 		rockchip,grf = <&grf>;
+		#sound-dai-cells = <0>;
 		status = "disabled";
 
 		ports {
