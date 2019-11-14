@@ -2897,6 +2897,22 @@ add_detailed_modes(struct drm_connector *connector, struct edid *edid,
 #define EDID_CEA_YCRCB422	(1 << 4)
 #define EDID_CEA_VCDB_QS	(1 << 6)
 
+#define DATA_BLOCK_EXTENDED_TAG		0x07
+#define VIDEO_CAPABILITY_DATA_BLOCK	0x0
+#define VSVD_DATA_BLOCK			0x1
+#define COLORIMETRY_DATA_BLOCK		0x5
+#define HDR_STATIC_METADATA_BLOCK	0x6
+
+/* HDR Metadata Block: Bit fields */
+#define SUPPORTED_EOTF_MASK            0x3f
+#define TRADITIONAL_GAMMA_SDR          (0x1 << 0)
+#define TRADITIONAL_GAMMA_HDR          (0x1 << 1)
+#define SMPTE_ST2084                   (0x1 << 2)
+#define FUTURE_EOTF                    (0x1 << 3)
+#define RESERVED_EOTF                  (0x3 << 4)
+
+#define STATIC_METADATA_TYPE1          (0x1 << 0)
+
 /*
  * Search EDID for CEA extension block.
  */
@@ -3662,6 +3678,23 @@ cea_db_offsets(const u8 *cea, int *start, int *end)
 		*end = 127;
 	if (*end < 4 || *end > 127)
 		return -ERANGE;
+
+	/*
+	 * XXX: cea[2] is equal to the real value minus one in some sink edid.
+	 */
+	if (*end != 4) {
+		int i;
+
+		i = *start;
+		while (i < (*end) &&
+		       i + cea_db_payload_len(&(cea)[i]) < (*end))
+			i += cea_db_payload_len(&(cea)[i]) + 1;
+
+		if (cea_db_payload_len(&(cea)[i]) &&
+		    i + cea_db_payload_len(&(cea)[i]) == (*end))
+			(*end)++;
+	}
+
 	return 0;
 }
 
@@ -3870,6 +3903,27 @@ static void fixup_detailed_cea_mode_clock(struct drm_display_mode *mode)
 	mode->clock = clock;
 }
 
+static bool cea_db_is_hdmi_colorimetry_data_block(const u8 *db)
+{
+	if (cea_db_tag(db) != DATA_BLOCK_EXTENDED_TAG)
+		return false;
+
+	if (db[1] != COLORIMETRY_DATA_BLOCK)
+		return false;
+
+	return true;
+}
+
+static void
+drm_parse_colorimetry_data_block(struct drm_connector *connector, const u8 *db)
+{
+	struct drm_hdmi_info *info = &connector->display_info.hdmi;
+	uint16_t len;
+
+	len = cea_db_payload_len(db);
+	info->colorimetry = db[2];
+}
+
 static void
 drm_parse_hdmi_vsdb_audio(struct drm_connector *connector, const u8 *db)
 {
@@ -4040,6 +4094,12 @@ static void drm_edid_to_eld(struct drm_connector *connector, struct edid *edid)
 		}
 	}
 	eld[DRM_ELD_SAD_COUNT_CONN_TYPE] |= total_sad_count << DRM_ELD_SAD_COUNT_SHIFT;
+
+	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+	    connector->connector_type == DRM_MODE_CONNECTOR_eDP)
+		eld[DRM_ELD_SAD_COUNT_CONN_TYPE] |= DRM_ELD_CONN_TYPE_DP;
+	else
+		eld[DRM_ELD_SAD_COUNT_CONN_TYPE] |= DRM_ELD_CONN_TYPE_HDMI;
 
 	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
 	    connector->connector_type == DRM_MODE_CONNECTOR_eDP)
@@ -4420,16 +4480,9 @@ static void drm_parse_hdmi_deep_color_info(struct drm_connector *connector,
 		  connector->name, dc_bpc);
 	info->bpc = dc_bpc;
 
-	/*
-	 * Deep color support mandates RGB444 support for all video
-	 * modes and forbids YCRCB422 support for all video modes per
-	 * HDMI 1.3 spec.
-	 */
-	info->color_formats = DRM_COLOR_FORMAT_RGB444;
-
 	/* YCRCB444 is optional according to spec. */
 	if (hdmi[6] & DRM_EDID_HDMI_DC_Y444) {
-		info->color_formats |= DRM_COLOR_FORMAT_YCRCB444;
+		info->edid_hdmi_dc_modes |= DRM_EDID_HDMI_DC_Y444;
 		DRM_DEBUG("%s: HDMI sink does YCRCB444 in deep color.\n",
 			  connector->name);
 	}
@@ -4497,6 +4550,8 @@ static void drm_parse_cea_ext(struct drm_connector *connector,
 			drm_parse_y420cmdb_bitmap(connector, db);
 		if (cea_db_is_vcdb(db))
 			drm_parse_vcdb(connector, db);
+		if (cea_db_is_hdmi_colorimetry_data_block(db))
+			drm_parse_colorimetry_data_block(connector, db);
 	}
 }
 

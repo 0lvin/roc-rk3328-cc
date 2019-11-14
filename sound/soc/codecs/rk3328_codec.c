@@ -110,8 +110,11 @@ static void rk3328_analog_output(struct rk3328_codec_priv *rk3328, int mute)
 {
 	unsigned int val = BIT(17);
 
+	// gpiomute is used as sdcard voltage select
+	/*
 	if (mute)
 		val |= BIT(1);
+	*/
 
 	regmap_write(rk3328->grf, RK3328_GRF_SOC_CON10, val);
 }

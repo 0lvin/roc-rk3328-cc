@@ -35,6 +35,7 @@ struct rockchip_pwm_chip {
 	struct clk *pclk;
 	const struct rockchip_pwm_data *data;
 	void __iomem *base;
+	bool vop_pwm_en; /* indicate voppwm mirror register state */
 };
 
 struct rockchip_pwm_regs {
@@ -49,7 +50,9 @@ struct rockchip_pwm_data {
 	unsigned int prescaler;
 	bool supports_polarity;
 	bool supports_lock;
+	bool vop_pwm;
 	u32 enable_conf;
+	u32 enable_conf_mask;
 };
 
 static inline struct rockchip_pwm_chip *to_rockchip_pwm_chip(struct pwm_chip *c)
@@ -125,6 +128,12 @@ static void rockchip_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	 * change the duty and period, that would not be effective.
 	 */
 	ctrl = readl_relaxed(pc->base + pc->data->regs.ctrl);
+	if (pc->data->vop_pwm) {
+		if (pc->vop_pwm_en)
+			ctrl |= PWM_ENABLE;
+		else
+			ctrl &= ~PWM_ENABLE;
+	}
 	if (pc->data->supports_lock) {
 		ctrl |= PWM_LOCK_EN;
 		writel_relaxed(ctrl, pc->base + pc->data->regs.ctrl);
@@ -168,6 +177,7 @@ static int rockchip_pwm_enable(struct pwm_chip *chip,
 	}
 
 	val = readl_relaxed(pc->base + pc->data->regs.ctrl);
+	val &= ~pc->data->enable_conf_mask;
 
 	if (enable)
 		val |= enable_conf;
@@ -175,6 +185,8 @@ static int rockchip_pwm_enable(struct pwm_chip *chip,
 		val &= ~enable_conf;
 
 	writel_relaxed(val, pc->base + pc->data->regs.ctrl);
+	if (pc->data->vop_pwm)
+		pc->vop_pwm_en = enable;
 
 	if (!enable)
 		clk_disable(pc->clk);
@@ -240,7 +252,9 @@ static const struct rockchip_pwm_data pwm_data_v1 = {
 	.prescaler = 2,
 	.supports_polarity = false,
 	.supports_lock = false,
+	.vop_pwm = false,
 	.enable_conf = PWM_CTRL_OUTPUT_EN | PWM_CTRL_TIMER_EN,
+	.enable_conf_mask = BIT(1) | BIT(3),
 };
 
 static const struct rockchip_pwm_data pwm_data_v2 = {
@@ -253,8 +267,10 @@ static const struct rockchip_pwm_data pwm_data_v2 = {
 	.prescaler = 1,
 	.supports_polarity = true,
 	.supports_lock = false,
+	.vop_pwm = false,
 	.enable_conf = PWM_OUTPUT_LEFT | PWM_LP_DISABLE | PWM_ENABLE |
 		       PWM_CONTINUOUS,
+	.enable_conf_mask = GENMASK(2, 0) | BIT(5) | BIT(8),
 };
 
 static const struct rockchip_pwm_data pwm_data_vop = {
@@ -267,8 +283,10 @@ static const struct rockchip_pwm_data pwm_data_vop = {
 	.prescaler = 1,
 	.supports_polarity = true,
 	.supports_lock = false,
+	.vop_pwm = true,
 	.enable_conf = PWM_OUTPUT_LEFT | PWM_LP_DISABLE | PWM_ENABLE |
 		       PWM_CONTINUOUS,
+	.enable_conf_mask = GENMASK(2, 0) | BIT(5) | BIT(8),
 };
 
 static const struct rockchip_pwm_data pwm_data_v3 = {
@@ -281,8 +299,10 @@ static const struct rockchip_pwm_data pwm_data_v3 = {
 	.prescaler = 1,
 	.supports_polarity = true,
 	.supports_lock = true,
+	.vop_pwm = false,
 	.enable_conf = PWM_OUTPUT_LEFT | PWM_LP_DISABLE | PWM_ENABLE |
 		       PWM_CONTINUOUS,
+	.enable_conf_mask = GENMASK(2, 0) | BIT(5) | BIT(8),
 };
 
 static const struct of_device_id rockchip_pwm_dt_ids[] = {
@@ -290,6 +310,7 @@ static const struct of_device_id rockchip_pwm_dt_ids[] = {
 	{ .compatible = "rockchip,rk3288-pwm", .data = &pwm_data_v2},
 	{ .compatible = "rockchip,vop-pwm", .data = &pwm_data_vop},
 	{ .compatible = "rockchip,rk3328-pwm", .data = &pwm_data_v3},
+	{ .compatible = "rockchip,rk3399-pwm", .data = &pwm_data_v2},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, rockchip_pwm_dt_ids);
