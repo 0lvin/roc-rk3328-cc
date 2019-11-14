@@ -121,24 +121,6 @@ struct amd_nb {
 	 (1ULL << PERF_REG_X86_R14)   | \
 	 (1ULL << PERF_REG_X86_R15))
 
-#define PEBS_XMM_REGS                   \
-	((1ULL << PERF_REG_X86_XMM0)  | \
-	 (1ULL << PERF_REG_X86_XMM1)  | \
-	 (1ULL << PERF_REG_X86_XMM2)  | \
-	 (1ULL << PERF_REG_X86_XMM3)  | \
-	 (1ULL << PERF_REG_X86_XMM4)  | \
-	 (1ULL << PERF_REG_X86_XMM5)  | \
-	 (1ULL << PERF_REG_X86_XMM6)  | \
-	 (1ULL << PERF_REG_X86_XMM7)  | \
-	 (1ULL << PERF_REG_X86_XMM8)  | \
-	 (1ULL << PERF_REG_X86_XMM9)  | \
-	 (1ULL << PERF_REG_X86_XMM10) | \
-	 (1ULL << PERF_REG_X86_XMM11) | \
-	 (1ULL << PERF_REG_X86_XMM12) | \
-	 (1ULL << PERF_REG_X86_XMM13) | \
-	 (1ULL << PERF_REG_X86_XMM14) | \
-	 (1ULL << PERF_REG_X86_XMM15))
-
 /*
  * Per register state.
  */
@@ -394,10 +376,10 @@ struct cpu_hw_events {
 
 /* Event constraint, but match on all event flags too. */
 #define INTEL_FLAGS_EVENT_CONSTRAINT(c, n) \
-	EVENT_CONSTRAINT(c, n, INTEL_ARCH_EVENT_MASK|X86_ALL_EVENT_FLAGS)
+	EVENT_CONSTRAINT(c, n, ARCH_PERFMON_EVENTSEL_EVENT|X86_ALL_EVENT_FLAGS)
 
 #define INTEL_FLAGS_EVENT_CONSTRAINT_RANGE(c, e, n)			\
-	EVENT_CONSTRAINT_RANGE(c, e, n, INTEL_ARCH_EVENT_MASK|X86_ALL_EVENT_FLAGS)
+	EVENT_CONSTRAINT_RANGE(c, e, n, ARCH_PERFMON_EVENTSEL_EVENT|X86_ALL_EVENT_FLAGS)
 
 /* Check only flags, but allow all event/umask */
 #define INTEL_ALL_EVENT_CONSTRAINT(code, n)	\
@@ -668,8 +650,7 @@ struct x86_pmu {
 			pebs_broken		:1,
 			pebs_prec_dist		:1,
 			pebs_no_tlb		:1,
-			pebs_no_isolation	:1,
-			pebs_no_xmm_regs	:1;
+			pebs_no_isolation	:1;
 	int		pebs_record_size;
 	int		pebs_buffer_size;
 	int		max_pebs_events;

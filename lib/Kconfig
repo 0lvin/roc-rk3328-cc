@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Library configuration
 #
@@ -599,6 +600,10 @@ config ARCH_NO_SG_CHAIN
 	def_bool n
 
 config ARCH_HAS_PMEM_API
+	bool
+
+# use memcpy to implement user copies for nommu architectures
+config UACCESS_MEMCPY
 	bool
 
 config ARCH_HAS_UACCESS_FLUSHCACHE

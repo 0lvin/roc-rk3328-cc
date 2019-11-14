@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Intel IXP4xx Queue Manager driver for Linux
  *
  * Copyright (C) 2007 Krzysztof Halasa <khc@pm.waw.pl>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of version 2 of the GNU General Public License
- * as published by the Free Software Foundation.
  */
 
 #include <linux/ioport.h>
@@ -385,8 +382,8 @@ static int ixp4xx_qmgr_probe(struct platform_device *pdev)
 	if (!res)
 		return -ENODEV;
 	qmgr_regs = devm_ioremap_resource(dev, res);
-	if (!qmgr_regs)
-		return -ENOMEM;
+	if (IS_ERR(qmgr_regs))
+		return PTR_ERR(qmgr_regs);
 
 	irq1 = platform_get_irq(pdev, 0);
 	if (irq1 <= 0)
