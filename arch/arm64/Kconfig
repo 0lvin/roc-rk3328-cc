@@ -143,6 +143,7 @@ config ARM64
 	select HAVE_DMA_CONTIGUOUS
 	select HAVE_DYNAMIC_FTRACE
 	select HAVE_EFFICIENT_UNALIGNED_ACCESS
+	select HAVE_FAST_GUP
 	select HAVE_FTRACE_MCOUNT_RECORD
 	select HAVE_FUNCTION_TRACER
 	select HAVE_FUNCTION_GRAPH_TRACER
@@ -266,9 +267,6 @@ config GENERIC_CALIBRATE_DELAY
 config ZONE_DMA32
 	bool "Support DMA32 zone" if EXPERT
 	default y
-
-config HAVE_GENERIC_GUP
-	def_bool y
 
 config ARCH_ENABLE_MEMORY_HOTPLUG
 	def_bool y
@@ -998,7 +996,7 @@ config CRASH_DUMP
 	  reserved region and then later executed after a crash by
 	  kdump/kexec.
 
-	  For more details see Documentation/kdump/kdump.txt
+	  For more details see Documentation/kdump/kdump.rst
 
 config XEN_DOM0
 	def_bool y
