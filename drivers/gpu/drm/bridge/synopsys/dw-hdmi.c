@@ -378,6 +378,13 @@ static void dw_hdmi_i2c_set_divs(struct dw_hdmi *hdmi)
 
 static void dw_hdmi_i2c_init(struct dw_hdmi *hdmi)
 {
+	hdmi_writeb(hdmi, HDMI_PHY_I2CM_INT_ADDR_DONE_POL,
+		    HDMI_PHY_I2CM_INT_ADDR);
+
+	hdmi_writeb(hdmi, HDMI_PHY_I2CM_CTLINT_ADDR_NAC_POL |
+		    HDMI_PHY_I2CM_CTLINT_ADDR_ARBITRATION_POL,
+		    HDMI_PHY_I2CM_CTLINT_ADDR);
+
 	/* Software reset */
 	hdmi_writeb(hdmi, 0x00, HDMI_I2CM_SOFTRSTZ);
 
@@ -3008,6 +3015,21 @@ static const struct regmap_config hdmi_regmap_32bit_config = {
 	.max_register	= HDMI_I2CM_FS_SCL_LCNT_0_ADDR << 2,
 };
 
+static void dw_hdmi_init_hw(struct dw_hdmi *hdmi)
+{
+	initialize_hdmi_ih_mutes(hdmi);
+
+	/*
+	 * Reset HDMI DDC I2C master controller and mute I2CM interrupts.
+	 * Even if we are using a separate i2c adapter doing this doesn't
+	 * hurt.
+	 */
+	dw_hdmi_i2c_init(hdmi);
+
+	if (hdmi->phy.ops->setup_hpd)
+		hdmi->phy.ops->setup_hpd(hdmi, hdmi->phy.data);
+}
+
 static struct dw_hdmi *
 __dw_hdmi_probe(struct platform_device *pdev,
 		const struct dw_hdmi_plat_data *plat_data)
@@ -3442,23 +3464,19 @@ static void dw_hdmi_reg_initial(struct dw_hdmi *hdmi)
 	}
 }
 
-void dw_hdmi_suspend(struct device *dev)
+void dw_hdmi_suspend(struct dw_hdmi *hdmi)
 {
-	struct dw_hdmi *hdmi = dev_get_drvdata(dev);
-
 	mutex_lock(&hdmi->mutex);
 	if (hdmi->irq)
 		disable_irq(hdmi->irq);
 	mutex_unlock(&hdmi->mutex);
-	pinctrl_pm_select_sleep_state(dev);
+	pinctrl_pm_select_sleep_state(hdmi->dev);
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_suspend);
 
-void dw_hdmi_resume(struct device *dev)
+void dw_hdmi_resume(struct dw_hdmi *hdmi)
 {
-	struct dw_hdmi *hdmi = dev_get_drvdata(dev);
-
-	pinctrl_pm_select_default_state(dev);
+	pinctrl_pm_select_default_state(hdmi->dev);
 	mutex_lock(&hdmi->mutex);
 	dw_hdmi_reg_initial(hdmi);
 	if (hdmi->i2c)
