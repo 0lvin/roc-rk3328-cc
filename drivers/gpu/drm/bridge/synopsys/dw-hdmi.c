@@ -1851,41 +1851,41 @@ static void hdmi_config_hdr_infoframe(struct dw_hdmi *hdmi)
 	hdmi_writeb(hdmi, frame.length, HDMI_FC_DRM_HB1);
 	hdmi_writeb(hdmi, frame.eotf, HDMI_FC_DRM_PB0);
 	hdmi_writeb(hdmi, frame.metadata_type, HDMI_FC_DRM_PB1);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries_x[0]),
+	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[0].x),
 		    HDMI_FC_DRM_PB2);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries_x[0]),
+	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[0].x),
 		    HDMI_FC_DRM_PB3);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries_y[0]),
+	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[0].y),
 		    HDMI_FC_DRM_PB4);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries_y[0]),
+	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[0].y),
 		    HDMI_FC_DRM_PB5);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries_x[1]),
+	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[1].x),
 		    HDMI_FC_DRM_PB6);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries_x[1]),
+	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[1].x),
 		    HDMI_FC_DRM_PB7);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries_y[1]),
+	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[1].y),
 		    HDMI_FC_DRM_PB8);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries_y[1]),
+	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[1].y),
 		    HDMI_FC_DRM_PB9);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries_x[2]),
+	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[2].x),
 		    HDMI_FC_DRM_PB10);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries_x[2]),
+	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[2].x),
 		    HDMI_FC_DRM_PB11);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries_y[2]),
+	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[2].y),
 		    HDMI_FC_DRM_PB12);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries_y[2]),
+	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[2].y),
 		    HDMI_FC_DRM_PB13);
-	hdmi_writeb(hdmi, HDR_LSB(frame.white_point_x), HDMI_FC_DRM_PB14);
-	hdmi_writeb(hdmi, HDR_MSB(frame.white_point_x), HDMI_FC_DRM_PB15);
-	hdmi_writeb(hdmi, HDR_LSB(frame.white_point_y), HDMI_FC_DRM_PB16);
-	hdmi_writeb(hdmi, HDR_MSB(frame.white_point_y), HDMI_FC_DRM_PB17);
-	hdmi_writeb(hdmi, HDR_LSB(frame.max_mastering_display_luminance),
+	hdmi_writeb(hdmi, HDR_LSB(frame.white_point.x), HDMI_FC_DRM_PB14);
+	hdmi_writeb(hdmi, HDR_MSB(frame.white_point.x), HDMI_FC_DRM_PB15);
+	hdmi_writeb(hdmi, HDR_LSB(frame.white_point.y), HDMI_FC_DRM_PB16);
+	hdmi_writeb(hdmi, HDR_MSB(frame.white_point.y), HDMI_FC_DRM_PB17);
+	hdmi_writeb(hdmi, HDR_LSB(frame.max_display_mastering_luminance),
 		    HDMI_FC_DRM_PB18);
-	hdmi_writeb(hdmi, HDR_MSB(frame.max_mastering_display_luminance),
+	hdmi_writeb(hdmi, HDR_MSB(frame.max_display_mastering_luminance),
 		    HDMI_FC_DRM_PB19);
-	hdmi_writeb(hdmi, HDR_LSB(frame.min_mastering_display_luminance),
+	hdmi_writeb(hdmi, HDR_LSB(frame.min_display_mastering_luminance),
 		    HDMI_FC_DRM_PB20);
-	hdmi_writeb(hdmi, HDR_MSB(frame.min_mastering_display_luminance),
+	hdmi_writeb(hdmi, HDR_MSB(frame.min_display_mastering_luminance),
 		    HDMI_FC_DRM_PB21);
 	hdmi_writeb(hdmi, HDR_LSB(frame.max_cll), HDMI_FC_DRM_PB22);
 	hdmi_writeb(hdmi, HDR_MSB(frame.max_cll), HDMI_FC_DRM_PB23);
