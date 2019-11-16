@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Advanced Micro Devices, Inc.
+ * Copyright 2019 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,12 +21,15 @@
  *
  */
 
-#ifndef __VI_DPM_H__
-#define __VI_DPM_H__
+#ifndef __GFXHUB_V2_0_H__
+#define __GFXHUB_V2_0_H__
 
-extern const struct amd_ip_funcs cz_dpm_ip_funcs;
-int cz_smu_init(struct amdgpu_device *adev);
-int cz_smu_start(struct amdgpu_device *adev);
-int cz_smu_fini(struct amdgpu_device *adev);
+u64 gfxhub_v2_0_get_fb_location(struct amdgpu_device *adev);
+int gfxhub_v2_0_gart_enable(struct amdgpu_device *adev);
+void gfxhub_v2_0_gart_disable(struct amdgpu_device *adev);
+void gfxhub_v2_0_set_fault_enable_default(struct amdgpu_device *adev,
+					  bool value);
+void gfxhub_v2_0_init(struct amdgpu_device *adev);
+u64 gfxhub_v2_0_get_mc_fb_offset(struct amdgpu_device *adev);
 
 #endif

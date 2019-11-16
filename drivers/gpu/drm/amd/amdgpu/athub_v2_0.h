@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Advanced Micro Devices, Inc.
+ * Copyright 2019 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,21 +19,12 @@
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  *
- * Authors: AMD
- *
  */
+#ifndef __ATHUB_V2_0_H__
+#define __ATHUB_V2_0_H__
 
-#ifndef __DCN10_CLK_MGR_H__
-#define __DCN10_CLK_MGR_H__
+int athub_v2_0_set_clockgating(struct amdgpu_device *adev,
+			       enum amd_clockgating_state state);
+void athub_v2_0_get_clockgating(struct amdgpu_device *adev, u32 *flags);
 
-#include "../dce/dce_clk_mgr.h"
-
-struct clk_bypass {
-	uint32_t dcfclk_bypass;
-	uint32_t dispclk_pypass;
-	uint32_t dprefclk_bypass;
-};
-
-struct clk_mgr *dcn1_clk_mgr_create(struct dc_context *ctx);
-
-#endif //__DCN10_CLK_MGR_H__
+#endif
