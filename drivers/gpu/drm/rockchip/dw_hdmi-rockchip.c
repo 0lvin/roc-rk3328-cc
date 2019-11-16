@@ -1028,9 +1028,9 @@ static int dw_hdmi_rockchip_remove(struct platform_device *pdev)
 
 static int __maybe_unused dw_hdmi_rockchip_suspend(struct device *dev)
 {
-	struct dw_hdmi *hdmi = dev_get_drvdata(dev);
+	struct rockchip_hdmi *hdmi = dev_get_drvdata(dev);
 
-	dw_hdmi_suspend(hdmi);
+	dw_hdmi_suspend(hdmi->hdmi);
 	pm_runtime_put_sync(dev);
 
 	return 0;
@@ -1038,15 +1038,15 @@ static int __maybe_unused dw_hdmi_rockchip_suspend(struct device *dev)
 
 static int __maybe_unused dw_hdmi_rockchip_resume(struct device *dev)
 {
-	struct dw_hdmi *hdmi = dev_get_drvdata(dev);
+	struct rockchip_hdmi *hdmi = dev_get_drvdata(dev);
 
 	pm_runtime_get_sync(dev);
-	dw_hdmi_resume(hdmi);
+	dw_hdmi_resume(hdmi->hdmi);
 
-	return  0;
+	return 0;
 }
 
-static const struct dev_pm_ops dw_hdmi_pm_ops = {
+static const struct dev_pm_ops dw_hdmi_rockchip_pm = {
 	SET_SYSTEM_SLEEP_PM_OPS(dw_hdmi_rockchip_suspend,
 				dw_hdmi_rockchip_resume)
 };
@@ -1056,7 +1056,7 @@ struct platform_driver dw_hdmi_rockchip_pltfm_driver = {
 	.remove = dw_hdmi_rockchip_remove,
 	.driver = {
 		.name = "dwhdmi-rockchip",
+		.pm = &dw_hdmi_rockchip_pm,
 		.of_match_table = dw_hdmi_rockchip_dt_ids,
-		.pm = &dw_hdmi_pm_ops,
 	},
 };
