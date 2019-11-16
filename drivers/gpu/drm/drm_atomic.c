@@ -384,6 +384,7 @@ static void drm_atomic_crtc_print_state(struct drm_printer *p,
 	drm_printf(p, "crtc[%u]: %s\n", crtc->base.id, crtc->name);
 	drm_printf(p, "\tenable=%d\n", state->enable);
 	drm_printf(p, "\tactive=%d\n", state->active);
+	drm_printf(p, "\tself_refresh_active=%d\n", state->self_refresh_active);
 	drm_printf(p, "\tplanes_changed=%d\n", state->planes_changed);
 	drm_printf(p, "\tmode_changed=%d\n", state->mode_changed);
 	drm_printf(p, "\tactive_changed=%d\n", state->active_changed);
@@ -847,6 +848,75 @@ drm_atomic_get_new_private_obj_state(struct drm_atomic_state *state,
 EXPORT_SYMBOL(drm_atomic_get_new_private_obj_state);
 
 /**
+ * drm_atomic_get_old_connector_for_encoder - Get old connector for an encoder
+ * @state: Atomic state
+ * @encoder: The encoder to fetch the connector state for
+ *
+ * This function finds and returns the connector that was connected to @encoder
+ * as specified by the @state.
+ *
+ * If there is no connector in @state which previously had @encoder connected to
+ * it, this function will return NULL. While this may seem like an invalid use
+ * case, it is sometimes useful to differentiate commits which had no prior
+ * connectors attached to @encoder vs ones that did (and to inspect their
+ * state). This is especially true in enable hooks because the pipeline has
+ * changed.
+ *
+ * Returns: The old connector connected to @encoder, or NULL if the encoder is
+ * not connected.
+ */
+struct drm_connector *
+drm_atomic_get_old_connector_for_encoder(struct drm_atomic_state *state,
+					 struct drm_encoder *encoder)
+{
+	struct drm_connector_state *conn_state;
+	struct drm_connector *connector;
+	unsigned int i;
+
+	for_each_old_connector_in_state(state, connector, conn_state, i) {
+		if (conn_state->best_encoder == encoder)
+			return connector;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(drm_atomic_get_old_connector_for_encoder);
+
+/**
+ * drm_atomic_get_new_connector_for_encoder - Get new connector for an encoder
+ * @state: Atomic state
+ * @encoder: The encoder to fetch the connector state for
+ *
+ * This function finds and returns the connector that will be connected to
+ * @encoder as specified by the @state.
+ *
+ * If there is no connector in @state which will have @encoder connected to it,
+ * this function will return NULL. While this may seem like an invalid use case,
+ * it is sometimes useful to differentiate commits which have no connectors
+ * attached to @encoder vs ones that do (and to inspect their state). This is
+ * especially true in disable hooks because the pipeline will change.
+ *
+ * Returns: The new connector connected to @encoder, or NULL if the encoder is
+ * not connected.
+ */
+struct drm_connector *
+drm_atomic_get_new_connector_for_encoder(struct drm_atomic_state *state,
+					 struct drm_encoder *encoder)
+{
+	struct drm_connector_state *conn_state;
+	struct drm_connector *connector;
+	unsigned int i;
+
+	for_each_new_connector_in_state(state, connector, conn_state, i) {
+		if (conn_state->best_encoder == encoder)
+			return connector;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(drm_atomic_get_new_connector_for_encoder);
+
+/**
  * drm_atomic_get_connector_state - get connector state
  * @state: global atomic state object
  * @connector: connector to get state object for
@@ -930,6 +1000,7 @@ static void drm_atomic_connector_print_state(struct drm_printer *p,
 
 	drm_printf(p, "connector[%u]: %s\n", connector->base.id, connector->name);
 	drm_printf(p, "\tcrtc=%s\n", state->crtc ? state->crtc->name : "(null)");
+	drm_printf(p, "\tself_refresh_aware=%d\n", state->self_refresh_aware);
 
 	if (connector->connector_type == DRM_MODE_CONNECTOR_WRITEBACK)
 		if (state->writeback_job && state->writeback_job->fb)
