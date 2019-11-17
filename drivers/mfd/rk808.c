@@ -817,46 +817,6 @@ err_irq:
 	return ret;
 }
 
-static int rk808_suspend(struct device *dev)
-{
-	int i, ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	for (i = 0; i < suspend_reg_num; i++) {
-		ret = regmap_update_bits(rk808->regmap,
-					 suspend_reg[i].addr,
-					 suspend_reg[i].mask,
-					 suspend_reg[i].value);
-		if (ret) {
-			dev_err(dev, "0x%x write err\n",
-				suspend_reg[i].addr);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-static int rk808_resume(struct device *dev)
-{
-	int i, ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	for (i = 0; i < resume_reg_num; i++) {
-		ret = regmap_update_bits(rk808->regmap,
-					 resume_reg[i].addr,
-					 resume_reg[i].mask,
-					 resume_reg[i].value);
-		if (ret) {
-			dev_err(dev, "0x%x write err\n",
-				resume_reg[i].addr);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
 static int rk808_remove(struct i2c_client *client)
 {
 	struct rk808 *rk808 = i2c_get_clientdata(client);
@@ -871,10 +831,48 @@ static int rk808_remove(struct i2c_client *client)
 	return 0;
 }
 
-static const struct dev_pm_ops rk8xx_pm_ops = {
-	.suspend = rk808_suspend,
-	.resume =  rk808_resume,
-};
+static int __maybe_unused rk8xx_suspend(struct device *dev)
+{
+	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
+	int ret = 0;
+	int i;
+
+	for (i = 0; i < suspend_reg_num; i++) {
+		ret = regmap_update_bits(rk808->regmap,
+					 suspend_reg[i].addr,
+					 suspend_reg[i].mask,
+					 suspend_reg[i].value);
+		if (ret) {
+			dev_err(dev, "0x%x write err\n",
+				suspend_reg[i].addr);
+			return ret;
+		}
+	}
+
+	return ret;
+}
+
+static int __maybe_unused rk8xx_resume(struct device *dev)
+{
+	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
+	int ret = 0;
+	int i;
+
+	for (i = 0; i < resume_reg_num; i++) {
+		ret = regmap_update_bits(rk808->regmap,
+					 resume_reg[i].addr,
+					 resume_reg[i].mask,
+					 resume_reg[i].value);
+		if (ret) {
+			dev_err(dev, "0x%x write err\n",
+				resume_reg[i].addr);
+			return ret;
+		}
+	}
+
+	return ret;
+}
+static SIMPLE_DEV_PM_OPS(rk8xx_pm_ops, rk8xx_suspend, rk8xx_resume);
 
 static struct i2c_driver rk808_i2c_driver = {
 	.driver = {
