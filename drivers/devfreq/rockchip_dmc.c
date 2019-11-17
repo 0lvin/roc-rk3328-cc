@@ -978,60 +978,6 @@ err:
 	return timing;
 }
 
-#ifdef CONFIG_DRM
-struct drm_device *drm_device_get_by_name(const char *name);
-#else
-static inline struct drm_device *drm_device_get_by_name(const char *name)
-{
-	return NULL;
-}
-#endif
-
-static int rk_drm_get_lcdc_type(void)
-{
-	struct drm_device *drm;
-	u32 lcdc_type = 0;
-
-	drm = drm_device_get_by_name("rockchip");
-	if (drm) {
-		struct drm_connector *conn;
-
-		list_for_each_entry(conn, &drm->mode_config.connector_list,
-				    head) {
-			if (conn->encoder) {
-				lcdc_type = conn->connector_type;
-				break;
-			}
-		}
-	}
-	switch (lcdc_type) {
-	case DRM_MODE_CONNECTOR_LVDS:
-		lcdc_type = SCREEN_LVDS;
-		break;
-	case DRM_MODE_CONNECTOR_DisplayPort:
-		lcdc_type = SCREEN_DP;
-		break;
-	case DRM_MODE_CONNECTOR_HDMIA:
-	case DRM_MODE_CONNECTOR_HDMIB:
-		lcdc_type = SCREEN_HDMI;
-		break;
-	case DRM_MODE_CONNECTOR_TV:
-		lcdc_type = SCREEN_TVOUT;
-		break;
-	case DRM_MODE_CONNECTOR_eDP:
-		lcdc_type = SCREEN_EDP;
-		break;
-	case DRM_MODE_CONNECTOR_DSI:
-		lcdc_type = SCREEN_MIPI;
-		break;
-	default:
-		lcdc_type = SCREEN_NULL;
-		break;
-	}
-
-	return lcdc_type;
-}
-
 static int rockchip_ddr_set_auto_self_refresh(uint32_t en)
 {
 	struct arm_smccc_res res;

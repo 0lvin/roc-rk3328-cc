@@ -80,13 +80,6 @@ enum {
 	DW_HDMI_RES_MAX,
 };
 
-struct dw_hdmi_audio_tmds_n {
-	unsigned long tmds;
-	unsigned int n_32k;
-	unsigned int n_44k1;
-	unsigned int n_48k;
-};
-
 enum dw_hdmi_phy_type {
 	DW_HDMI_PHY_DWC_HDMI_TX_PHY = 0x00,
 	DW_HDMI_PHY_DWC_MHL_PHY_HEAC = 0xb2,
@@ -149,7 +142,6 @@ struct dw_hdmi_plat_data {
 	struct regmap *regm;
 	enum drm_mode_status (*mode_valid)(struct drm_connector *connector,
 					   const struct drm_display_mode *mode);
-	const struct dw_hdmi_audio_tmds_n *tmds_n_table;
 	unsigned long input_bus_format;
 	unsigned long input_bus_encoding;
 
