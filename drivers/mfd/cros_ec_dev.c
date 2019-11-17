@@ -285,13 +285,15 @@ static void cros_ec_sensors_register(struct cros_ec_dev *ec)
 
 	resp = (struct ec_response_motion_sense *)msg->data;
 	sensor_num = resp->dump.sensor_count;
-	/* Allocate 1 extra sensors in FIFO are needed */
-	sensor_cells = kcalloc(sensor_num + 1, sizeof(struct mfd_cell),
+	/*
+	 * Allocate 2 extra sensors if lid angle sensor and/or FIFO are needed.
+	 */
+	sensor_cells = kcalloc(sensor_num + 2, sizeof(struct mfd_cell),
 			       GFP_KERNEL);
 	if (sensor_cells == NULL)
 		goto error;
 
-	sensor_platforms = kcalloc(sensor_num + 1,
+	sensor_platforms = kcalloc(sensor_num,
 				   sizeof(struct cros_ec_sensor_platform),
 				   GFP_KERNEL);
 	if (sensor_platforms == NULL)
@@ -349,6 +351,11 @@ static void cros_ec_sensors_register(struct cros_ec_dev *ec)
 
 	if (cros_ec_check_features(ec, EC_FEATURE_MOTION_SENSE_FIFO)) {
 		sensor_cells[id].name = "cros-ec-ring";
+		id++;
+	}
+	if (cros_ec_check_features(ec,
+				EC_FEATURE_REFINED_TABLET_MODE_HYSTERESIS)) {
+		sensor_cells[id].name = "cros-ec-lid-angle";
 		id++;
 	}
 
@@ -438,6 +445,16 @@ static int ec_device_probe(struct platform_device *pdev)
 		 * regardless of the probing order.
 		 */
 		ec_platform->ec_name = CROS_EC_DEV_TP_NAME;
+	}
+
+	/* Check whether this is actually a SCP rather than an EC. */
+	if (cros_ec_check_features(ec, EC_FEATURE_SCP)) {
+		dev_info(dev, "CrOS SCP MCU detected.\n");
+		/*
+		 * Help userspace differentiating ECs from SCP,
+		 * regardless of the probing order.
+		 */
+		ec_platform->ec_name = CROS_EC_DEV_SCP_NAME;
 	}
 
 	/*
