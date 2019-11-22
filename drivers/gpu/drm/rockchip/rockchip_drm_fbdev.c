@@ -22,7 +22,7 @@ static int rockchip_fbdev_mmap(struct fb_info *info,
 			       struct vm_area_struct *vma)
 {
 	struct drm_fb_helper *helper = info->par;
-	struct rockchip_drm_private *private = to_drm_private(helper);
+	struct rockchip_drm_private *private = helper->dev->dev_private;
 
 	return rockchip_gem_mmap_buf(private->fbdev_bo, vma);
 }
@@ -39,7 +39,7 @@ static struct fb_ops rockchip_drm_fbdev_ops = {
 static int rockchip_drm_fbdev_create(struct drm_fb_helper *helper,
 				     struct drm_fb_helper_surface_size *sizes)
 {
-	struct rockchip_drm_private *private = to_drm_private(helper);
+	struct rockchip_drm_private *private = helper->dev->dev_private;
 	struct drm_mode_fb_cmd2 mode_cmd = { 0 };
 	struct drm_device *dev = helper->dev;
 	struct rockchip_gem_object *rk_obj;

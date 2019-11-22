@@ -191,6 +191,8 @@ enum rk818_reg {
 #define RK818_BOOST_CTRL_REG		0x56
 #define RK818_DCDC_ILMAX		0x90
 #define RK818_USB_CTRL_REG		0xa1
+#define RK818_ON_SOURCE_REG		0xae
+#define RK818_OFF_SOURCE_REG		0xaf
 
 #define RK818_H5V_EN			BIT(0)
 #define RK818_REF_RDY_CTRL		BIT(1)
@@ -246,6 +248,7 @@ enum rk805_reg {
 #define RK805_INT_STS_MSK_REG		0x4D
 #define RK805_GPIO_IO_POL_REG		0x50
 #define RK805_OUT_REG			0x52
+#define RK805_DCDC_VRP_REG		0x92
 #define RK805_ON_SOURCE_REG		0xAE
 #define RK805_OFF_SOURCE_REG		0xAF
 
@@ -384,6 +387,7 @@ enum rk805_reg {
 
 #define TEMP115C			0x0c
 #define TEMP_HOTDIE_MSK			0x0c
+#define BUCK4_VRP_3PERCENT		0xc0
 #define SLP_SD_MSK			(0x3 << 2)
 #define SHUTDOWN_FUN			(0x2 << 2)
 #define SLEEP_FUN			(0x1 << 2)
