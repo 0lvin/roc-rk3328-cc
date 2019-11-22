@@ -80,13 +80,6 @@ enum {
 	DW_HDMI_RES_MAX,
 };
 
-struct dw_hdmi_audio_tmds_n {
-	unsigned long tmds;
-	unsigned int n_32k;
-	unsigned int n_44k1;
-	unsigned int n_48k;
-};
-
 enum dw_hdmi_phy_type {
 	DW_HDMI_PHY_DWC_HDMI_TX_PHY = 0x00,
 	DW_HDMI_PHY_DWC_MHL_PHY_HEAC = 0xb2,
@@ -149,7 +142,6 @@ struct dw_hdmi_plat_data {
 	struct regmap *regm;
 	enum drm_mode_status (*mode_valid)(struct drm_connector *connector,
 					   const struct drm_display_mode *mode);
-	const struct dw_hdmi_audio_tmds_n *tmds_n_table;
 	unsigned long input_bus_format;
 	unsigned long input_bus_encoding;
 
@@ -185,21 +177,15 @@ struct dw_hdmi *dw_hdmi_bind(struct platform_device *pdev,
 			     struct drm_encoder *encoder,
 			     const struct dw_hdmi_plat_data *plat_data);
 
+void dw_hdmi_suspend(struct dw_hdmi *hdmi);
+void dw_hdmi_resume(struct dw_hdmi *hdmi);
+
 void dw_hdmi_setup_rx_sense(struct dw_hdmi *hdmi, bool hpd, bool rx_sense);
 
 void dw_hdmi_set_sample_rate(struct dw_hdmi *hdmi, unsigned int rate);
 void dw_hdmi_audio_enable(struct dw_hdmi *hdmi);
 void dw_hdmi_audio_disable(struct dw_hdmi *hdmi);
-void dw_hdmi_suspend(struct device *dev);
-void dw_hdmi_resume(struct device *dev);
 void dw_hdmi_set_high_tmds_clock_ratio(struct dw_hdmi *hdmi);
-
-/* PHY configuration */
-void dw_hdmi_phy_i2c_write(struct dw_hdmi *hdmi, unsigned short data,
-			   unsigned char addr);
-
-enum drm_connector_status dw_hdmi_phy_read_hpd(struct dw_hdmi *hdmi,
-					       void *data);
 
 /* PHY configuration */
 void dw_hdmi_phy_i2c_set_addr(struct dw_hdmi *hdmi, u8 address);

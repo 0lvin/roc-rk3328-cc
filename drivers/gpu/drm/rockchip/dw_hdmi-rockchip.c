@@ -25,6 +25,14 @@
 #include "rockchip_drm_drv.h"
 #include "rockchip_drm_vop.h"
 
+#define RK3228_GRF_SOC_CON2		0x0408
+#define RK3228_HDMI_SDAIN_MSK		BIT(14)
+#define RK3228_HDMI_SCLIN_MSK		BIT(13)
+#define RK3228_GRF_SOC_CON6		0x0418
+#define RK3228_HDMI_HPD_VSEL		BIT(6)
+#define RK3228_HDMI_SDA_VSEL		BIT(5)
+#define RK3228_HDMI_SCL_VSEL		BIT(4)
+
 #define RK3288_GRF_SOC_CON6		0x025C
 #define RK3288_HDMI_LCDC_SEL		BIT(4)
 #define RK3328_GRF_SOC_CON2		0x0408
@@ -113,31 +121,6 @@ struct rockchip_hdmi {
 };
 
 #define to_rockchip_hdmi(x)	container_of(x, struct rockchip_hdmi, x)
-
-/*
- * There are some rates that would be ranged for better clock jitter at
- * Chrome OS tree, like 25.175Mhz would range to 25.170732Mhz. But due
- * to the clock is aglined to KHz in struct drm_display_mode, this would
- * bring some inaccurate error if we still run the compute_n math, so
- * let's just code an const table for it until we can actually get the
- * right clock rate.
- */
-static const struct dw_hdmi_audio_tmds_n rockchip_werid_tmds_n_table[] = {
-	/* 25176471 for 25.175 MHz = 428000000 / 17. */
-	{ .tmds = 25177000, .n_32k = 4352, .n_44k1 = 14994, .n_48k = 6528, },
-	/* 57290323 for 57.284 MHz */
-	{ .tmds = 57291000, .n_32k = 3968, .n_44k1 = 4557, .n_48k = 5952, },
-	/* 74437500 for 74.44 MHz = 297750000 / 4 */
-	{ .tmds = 74438000, .n_32k = 8192, .n_44k1 = 18816, .n_48k = 4096, },
-	/* 118666667 for 118.68 MHz */
-	{ .tmds = 118667000, .n_32k = 4224, .n_44k1 = 5292, .n_48k = 6336, },
-	/* 121714286 for 121.75 MHz */
-	{ .tmds = 121715000, .n_32k = 4480, .n_44k1 = 6174, .n_48k = 6272, },
-	/* 136800000 for 136.75 MHz */
-	{ .tmds = 136800000, .n_32k = 4096, .n_44k1 = 5684, .n_48k = 6144, },
-	/* End of table */
-	{ .tmds = 0,         .n_32k = 0,    .n_44k1 = 0,    .n_48k = 0, },
-};
 
 static const struct dw_hdmi_mpll_config rockchip_mpll_cfg[] = {
 	{
@@ -758,6 +741,25 @@ static void dw_hdmi_rockchip_genphy_disable(struct dw_hdmi *dw_hdmi, void *data)
 	phy_power_off(hdmi->phy);
 }
 
+static void dw_hdmi_rk3228_setup_hpd(struct dw_hdmi *dw_hdmi, void *data)
+{
+	struct rockchip_hdmi *hdmi = (struct rockchip_hdmi *)data;
+
+	dw_hdmi_phy_setup_hpd(dw_hdmi, data);
+
+	regmap_write(hdmi->regmap,
+		RK3228_GRF_SOC_CON6,
+		HIWORD_UPDATE(RK3228_HDMI_HPD_VSEL | RK3228_HDMI_SDA_VSEL |
+			      RK3228_HDMI_SCL_VSEL,
+			      RK3228_HDMI_HPD_VSEL | RK3228_HDMI_SDA_VSEL |
+			      RK3228_HDMI_SCL_VSEL));
+
+	regmap_write(hdmi->regmap,
+		RK3228_GRF_SOC_CON2,
+		HIWORD_UPDATE(RK3228_HDMI_SDAIN_MSK | RK3228_HDMI_SCLIN_MSK,
+			      RK3228_HDMI_SDAIN_MSK | RK3228_HDMI_SCLIN_MSK));
+}
+
 static enum drm_connector_status
 dw_hdmi_rk3328_read_hpd(struct dw_hdmi *dw_hdmi, void *data)
 {
@@ -832,6 +834,29 @@ static void dw_hdmi_rk3328_setup_hpd(struct dw_hdmi *dw_hdmi, void *data)
 			      RK3328_HDMI_HPD_IOE));
 }
 
+static const struct dw_hdmi_phy_ops rk3228_hdmi_phy_ops = {
+	.init		= dw_hdmi_rockchip_genphy_init,
+	.disable	= dw_hdmi_rockchip_genphy_disable,
+	.read_hpd	= dw_hdmi_phy_read_hpd,
+	.update_hpd	= dw_hdmi_phy_update_hpd,
+	.setup_hpd	= dw_hdmi_rk3228_setup_hpd,
+};
+
+static struct rockchip_hdmi_chip_data rk3228_chip_data = {
+	.lcdsel_grf_reg = -1,
+};
+
+static const struct dw_hdmi_plat_data rk3228_hdmi_drv_data = {
+	.mode_valid = dw_hdmi_rockchip_mode_valid,
+	.mpll_cfg = rockchip_mpll_cfg,
+	.cur_ctr = rockchip_cur_ctr,
+	.phy_config = rockchip_phy_config,
+	.phy_data = &rk3228_chip_data,
+	.phy_ops = &rk3228_hdmi_phy_ops,
+	.phy_name = "inno_dw_hdmi_phy2",
+	.phy_force_vendor = true,
+};
+
 static struct rockchip_hdmi_chip_data rk3288_chip_data = {
 	.lcdsel_grf_reg = RK3288_GRF_SOC_CON6,
 	.lcdsel_big = HIWORD_UPDATE(0, RK3288_HDMI_LCDC_SEL),
@@ -843,7 +868,6 @@ static const struct dw_hdmi_plat_data rk3288_hdmi_drv_data = {
 	.mpll_cfg   = rockchip_mpll_cfg,
 	.cur_ctr    = rockchip_cur_ctr,
 	.phy_config = rockchip_phy_config,
-	.tmds_n_table = rockchip_werid_tmds_n_table,
 	.phy_data = &rk3288_chip_data,
 	.get_input_bus_format = dw_hdmi_rockchip_get_input_bus_format,
 	.get_output_bus_format = dw_hdmi_rockchip_get_output_bus_format,
@@ -898,6 +922,9 @@ static const struct dw_hdmi_plat_data rk3399_hdmi_drv_data = {
 };
 
 static const struct of_device_id dw_hdmi_rockchip_dt_ids[] = {
+	{ .compatible = "rockchip,rk3228-dw-hdmi",
+	  .data = &rk3228_hdmi_drv_data
+	},
 	{ .compatible = "rockchip,rk3288-dw-hdmi",
 	  .data = &rk3288_hdmi_drv_data
 	},
@@ -1028,7 +1055,9 @@ static int dw_hdmi_rockchip_remove(struct platform_device *pdev)
 
 static int __maybe_unused dw_hdmi_rockchip_suspend(struct device *dev)
 {
-	dw_hdmi_suspend(dev);
+	struct rockchip_hdmi *hdmi = dev_get_drvdata(dev);
+
+	dw_hdmi_suspend(hdmi->hdmi);
 	pm_runtime_put_sync(dev);
 
 	return 0;
@@ -1036,13 +1065,15 @@ static int __maybe_unused dw_hdmi_rockchip_suspend(struct device *dev)
 
 static int __maybe_unused dw_hdmi_rockchip_resume(struct device *dev)
 {
-	pm_runtime_get_sync(dev);
-	dw_hdmi_resume(dev);
+	struct rockchip_hdmi *hdmi = dev_get_drvdata(dev);
 
-	return  0;
+	pm_runtime_get_sync(dev);
+	dw_hdmi_resume(hdmi->hdmi);
+
+	return 0;
 }
 
-static const struct dev_pm_ops dw_hdmi_pm_ops = {
+static const struct dev_pm_ops dw_hdmi_rockchip_pm = {
 	SET_SYSTEM_SLEEP_PM_OPS(dw_hdmi_rockchip_suspend,
 				dw_hdmi_rockchip_resume)
 };
@@ -1052,7 +1083,7 @@ struct platform_driver dw_hdmi_rockchip_pltfm_driver = {
 	.remove = dw_hdmi_rockchip_remove,
 	.driver = {
 		.name = "dwhdmi-rockchip",
+		.pm = &dw_hdmi_rockchip_pm,
 		.of_match_table = dw_hdmi_rockchip_dt_ids,
-		.pm = &dw_hdmi_pm_ops,
 	},
 };

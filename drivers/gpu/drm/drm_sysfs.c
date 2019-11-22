@@ -11,14 +11,20 @@
  */
 
 #include <linux/device.h>
-#include <linux/kdev_t.h>
-#include <linux/gfp.h>
 #include <linux/err.h>
 #include <linux/export.h>
+#include <linux/gfp.h>
+#include <linux/kdev_t.h>
+#include <linux/slab.h>
 
-#include <drm/drm_edid.h>
+#include <drm/drm_connector.h>
+#include <drm/drm_device.h>
+#include <drm/drm_file.h>
+#include <drm/drm_modes.h>
+#include <drm/drm_print.h>
+#include <drm/drm_property.h>
 #include <drm/drm_sysfs.h>
-#include <drm/drmP.h>
+
 #include "drm_internal.h"
 
 #define to_drm_minor(d) dev_get_drvdata(d)
@@ -43,24 +49,6 @@ static struct device_type drm_sysfs_device_minor = {
 };
 
 struct class *drm_class;
-
-static const char * const audioformatstr[] = {
-	"",
-	"LPCM",		/*AUDIO_LPCM = 1,*/
-	"AC3",		/*AUDIO_AC3,*/
-	"MPEG1",	/*AUDIO_MPEG1,*/
-	"MP3",		/*AUDIO_MP3,*/
-	"MPEG2",	/*AUDIO_MPEG2,*/
-	"AAC-LC",	/*AUDIO_AAC_LC, AAC*/
-	"DTS",		/*AUDIO_DTS,*/
-	"ATARC",	/*AUDIO_ATARC,*/
-	"DSD",		/*AUDIO_DSD, One bit Audio */
-	"E-AC3",	/*AUDIO_E_AC3,*/
-	"DTS-HD",	/*AUDIO_DTS_HD,*/
-	"MLP",		/*AUDIO_MLP,*/
-	"DST",		/*AUDIO_DST,*/
-	"WMA-PRO",	/*AUDIO_WMA_PRO*/
-};
 
 static char *drm_devnode(struct device *dev, umode_t *mode)
 {
@@ -95,6 +83,7 @@ int drm_sysfs_init(void)
 	}
 
 	drm_class->devnode = drm_devnode;
+	drm_setup_hdcp_srm(drm_class);
 	return 0;
 }
 
@@ -107,6 +96,7 @@ void drm_sysfs_destroy(void)
 {
 	if (IS_ERR_OR_NULL(drm_class))
 		return;
+	drm_teardown_hdcp_srm(drm_class);
 	class_remove_file(drm_class, &class_attr_version.attr);
 	class_destroy(drm_class);
 	drm_class = NULL;
@@ -195,52 +185,6 @@ static ssize_t enabled_show(struct device *device,
 	return snprintf(buf, PAGE_SIZE, enabled ? "enabled\n" : "disabled\n");
 }
 
-static int drm_get_audio_format(struct edid *edid,
-			       char *audioformat, int len)
-{
-	int i, size = 0, num = 0;
-	struct cea_sad *sads = NULL;
-
-	memset(audioformat, 0, len);
-	num = drm_edid_to_sad(edid, &sads);
-	if (num <= 0)
-		return 0;
-
-	for (i = 0; i < num; i++) {
-		if (sads[i].format < 1 || sads[i].format > 14) {
-			DRM_ERROR("audio type unsupported.\n");
-			continue;
-		}
-		size = strlen(audioformatstr[sads[i].format]);
-		memcpy(audioformat, audioformatstr[sads[i].format], size);
-		audioformat[size] = ',';
-		audioformat += (size + 1);
-	}
-	kfree(sads);
-
-	return num;
-}
-
-static ssize_t audioformat_show(struct device *device,
-				struct device_attribute *attr,
-				char *buf)
-{
-	char audioformat[200];
-	int ret = 0;
-	struct edid *edid;
-	struct drm_connector *connector = to_drm_connector(device);
-
-	if (!connector->edid_blob_ptr)
-		return 0;
-
-	edid = (struct edid *)connector->edid_blob_ptr->data;
-	ret = drm_get_audio_format(edid, audioformat, 200);
-	if (ret)
-		return snprintf(buf, PAGE_SIZE, "%s\n", audioformat);
-
-	return 0;
-}
-
 static ssize_t edid_show(struct file *filp, struct kobject *kobj,
 			 struct bin_attribute *attr, char *buf, loff_t off,
 			 size_t count)
@@ -284,44 +228,10 @@ static ssize_t modes_show(struct device *device,
 
 	mutex_lock(&connector->dev->mode_config.mutex);
 	list_for_each_entry(mode, &connector->modes, head) {
-		bool interlaced = !!(mode->flags & DRM_MODE_FLAG_INTERLACE);
-
-		written += snprintf(buf + written, PAGE_SIZE - written,
-				    "%dx%d%s%d\n",
-				    mode->hdisplay, mode->vdisplay,
-				    interlaced ? "i" : "p",
-				    drm_mode_vrefresh(mode));
+		written += snprintf(buf + written, PAGE_SIZE - written, "%s\n",
+				    mode->name);
 	}
 	mutex_unlock(&connector->dev->mode_config.mutex);
-
-	return written;
-}
-
-static ssize_t mode_show(struct device *device,
-			   struct device_attribute *attr,
-			   char *buf)
-{
-	struct drm_connector *connector = to_drm_connector(device);
-	struct drm_display_mode *mode;
-	struct drm_crtc_state *crtc_state;
-	bool interlaced;
-	int written = 0;
-
-	if (!connector->state || !connector->state->crtc)
-		return written;
-
-	crtc_state = connector->state->crtc->state;
-	if (!crtc_state)
-		return written;
-
-	mode = &crtc_state->mode;
-
-	interlaced = !!(mode->flags & DRM_MODE_FLAG_INTERLACE);
-	written += snprintf(buf + written, PAGE_SIZE - written,
-			    "%dx%d%s%d\n",
-			    mode->hdisplay, mode->vdisplay,
-			    interlaced ? "i" : "p",
-			    drm_mode_vrefresh(mode));
 
 	return written;
 }
@@ -330,16 +240,12 @@ static DEVICE_ATTR_RW(status);
 static DEVICE_ATTR_RO(enabled);
 static DEVICE_ATTR_RO(dpms);
 static DEVICE_ATTR_RO(modes);
-static DEVICE_ATTR_RO(mode);
-static DEVICE_ATTR_RO(audioformat);
 
 static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_status.attr,
 	&dev_attr_enabled.attr,
 	&dev_attr_dpms.attr,
 	&dev_attr_modes.attr,
-	&dev_attr_mode.attr,
-	&dev_attr_audioformat.attr,
 	NULL
 };
 

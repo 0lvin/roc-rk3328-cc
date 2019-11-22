@@ -57,6 +57,27 @@ static bool rk808_is_volatile_reg(struct device *dev, unsigned int reg)
 	return false;
 }
 
+static bool rk817_is_volatile_reg(struct device *dev, unsigned int reg)
+{
+	/*
+	 * Notes:
+	 * - Technically the ROUND_30s bit makes RTC_CTRL_REG volatile, but
+	 *   we don't use that feature.  It's better to cache.
+	 */
+
+	switch (reg) {
+	case RK817_SECONDS_REG ... RK817_WEEKS_REG:
+	case RK817_RTC_STATUS_REG:
+	case RK817_INT_STS_REG0:
+	case RK817_INT_STS_REG1:
+	case RK817_INT_STS_REG2:
+	case RK817_SYS_STS:
+		return true;
+	}
+
+	return true;
+}
+
 static int rk808_shutdown(struct regmap *regmap)
 {
 	int ret;
@@ -120,12 +141,24 @@ static const struct regmap_config rk808_regmap_config = {
 	.volatile_reg = rk808_is_volatile_reg,
 };
 
+static const struct regmap_config rk817_regmap_config = {
+	.reg_bits = 8,
+	.val_bits = 8,
+	.max_register = RK817_GPIO_INT_CFG,
+	.cache_type = REGCACHE_NONE,
+	.volatile_reg = rk817_is_volatile_reg,
+};
+
 static struct resource rtc_resources[] = {
 	{
 		.start  = RK808_IRQ_RTC_ALARM,
 		.end    = RK808_IRQ_RTC_ALARM,
 		.flags  = IORESOURCE_IRQ,
 	}
+};
+
+static struct resource rk817_rtc_resources[] = {
+	DEFINE_RES_IRQ(RK817_IRQ_RTC_ALARM),
 };
 
 static struct resource rk805_key_resources[] = {
@@ -139,6 +172,11 @@ static struct resource rk805_key_resources[] = {
 		.end    = RK805_IRQ_PWRON_FALL,
 		.flags  = IORESOURCE_IRQ,
 	},
+};
+
+static struct resource rk817_pwrkey_resources[] = {
+	DEFINE_RES_IRQ(RK817_IRQ_PWRON_RISE),
+	DEFINE_RES_IRQ(RK817_IRQ_PWRON_FALL),
 };
 
 static const struct mfd_cell rk805s[] = {
@@ -167,6 +205,33 @@ static const struct mfd_cell rk808s[] = {
 	},
 };
 
+static const struct mfd_cell rk817s[] = {
+	{ .name = "rk808-clkout",},
+	{ .name = "rk808-regulator",},
+	{
+		.name = "rk8xx-pwrkey",
+		.num_resources = ARRAY_SIZE(rk817_pwrkey_resources),
+		.resources = &rk817_pwrkey_resources[0],
+	},
+	{
+		.name = "rk808-rtc",
+		.num_resources = ARRAY_SIZE(rk817_rtc_resources),
+		.resources = &rk817_rtc_resources[0],
+	},
+};
+
+static const struct mfd_cell rk818s[] = {
+	{ .name = "rk808-clkout", },
+	{ .name = "rk808-regulator", },
+	{ .name = "rk818-battery", .of_compatible = "rk818-battery", },
+	{ .name = "rk818-charger", },
+	{
+		.name = "rk808-rtc",
+		.num_resources = ARRAY_SIZE(rtc_resources),
+		.resources = &rtc_resources[0],
+	},
+};
+
 static const struct rk808_reg_data rk805_pre_init_reg[] = {
 	{RK805_BUCK4_CONFIG_REG, BUCK_ILMIN_MASK, BUCK_ILMIN_400MA},
 	{RK805_GPIO_IO_POL_REG, SLP_SD_MSK, SLEEP_FUN},
@@ -185,6 +250,13 @@ static const struct rk808_reg_data rk808_pre_init_reg[] = {
 	{ RK808_RTC_CTRL_REG, DEV_OFF, DEV_OFF},
 	{ RK808_VB_MON_REG,       MASK_ALL,         VB_LO_ACT |
 						    VB_LO_SEL_3500MV },
+};
+
+static const struct rk808_reg_data rk817_pre_init_reg[] = {
+	{RK817_RTC_CTRL_REG, RTC_STOP, RTC_STOP},
+	{RK817_GPIO_INT_CFG, RK817_INT_POL_MSK, RK817_INT_POL_H},
+	{RK817_SYS_CFG(1), RK817_HOTDIE_TEMP_MSK | RK817_TSD_TEMP_MSK,
+					   RK817_HOTDIE_105 | RK817_TSD_140},
 };
 
 static const struct rk808_reg_data rk818_pre_init_reg[] = {
@@ -351,6 +423,33 @@ static const struct regmap_irq rk818_irqs[] = {
 	},
 };
 
+static const struct regmap_irq rk817_irqs[RK817_IRQ_END] = {
+	REGMAP_IRQ_REG_LINE(0, 8),
+	REGMAP_IRQ_REG_LINE(1, 8),
+	REGMAP_IRQ_REG_LINE(2, 8),
+	REGMAP_IRQ_REG_LINE(3, 8),
+	REGMAP_IRQ_REG_LINE(4, 8),
+	REGMAP_IRQ_REG_LINE(5, 8),
+	REGMAP_IRQ_REG_LINE(6, 8),
+	REGMAP_IRQ_REG_LINE(7, 8),
+	REGMAP_IRQ_REG_LINE(8, 8),
+	REGMAP_IRQ_REG_LINE(9, 8),
+	REGMAP_IRQ_REG_LINE(10, 8),
+	REGMAP_IRQ_REG_LINE(11, 8),
+	REGMAP_IRQ_REG_LINE(12, 8),
+	REGMAP_IRQ_REG_LINE(13, 8),
+	REGMAP_IRQ_REG_LINE(14, 8),
+	REGMAP_IRQ_REG_LINE(15, 8),
+	REGMAP_IRQ_REG_LINE(16, 8),
+	REGMAP_IRQ_REG_LINE(17, 8),
+	REGMAP_IRQ_REG_LINE(18, 8),
+	REGMAP_IRQ_REG_LINE(19, 8),
+	REGMAP_IRQ_REG_LINE(20, 8),
+	REGMAP_IRQ_REG_LINE(21, 8),
+	REGMAP_IRQ_REG_LINE(22, 8),
+	REGMAP_IRQ_REG_LINE(23, 8)
+};
+
 static struct regmap_irq_chip rk805_irq_chip = {
 	.name = "rk805",
 	.irqs = rk805_irqs,
@@ -374,6 +473,18 @@ static const struct regmap_irq_chip rk808_irq_chip = {
 	.init_ack_masked = true,
 };
 
+static struct regmap_irq_chip rk817_irq_chip = {
+	.name = "rk817",
+	.irqs = rk817_irqs,
+	.num_irqs = ARRAY_SIZE(rk817_irqs),
+	.num_regs = 3,
+	.irq_reg_stride = 2,
+	.status_base = RK817_INT_STS_REG0,
+	.mask_base = RK817_INT_STS_MSK_REG0,
+	.ack_base = RK817_INT_STS_REG0,
+	.init_ack_masked = true,
+};
+
 static const struct regmap_irq_chip rk818_irq_chip = {
 	.name = "rk818",
 	.irqs = rk818_irqs,
@@ -384,18 +495,6 @@ static const struct regmap_irq_chip rk818_irq_chip = {
 	.mask_base = RK818_INT_STS_MSK_REG1,
 	.ack_base = RK818_INT_STS_REG1,
 	.init_ack_masked = true,
-};
-
-static const struct mfd_cell rk818s[] = {
-	{ .name = "rk808-clkout", },
-	{ .name = "rk808-regulator", },
-	{ .name = "rk818-battery", .of_compatible = "rk818-battery", },
-	{ .name = "rk818-charger", },
-	{
-		.name = "rk808-rtc",
-		.num_resources = ARRAY_SIZE(rtc_resources),
-		.resources = &rtc_resources[0],
-	},
 };
 
 static struct rk808_reg_data rk805_suspend_reg[] = {
@@ -529,6 +628,8 @@ static struct device_attribute rk8xx_attrs =
 static const struct of_device_id rk808_of_match[] = {
 	{ .compatible = "rockchip,rk805" },
 	{ .compatible = "rockchip,rk808" },
+	{ .compatible = "rockchip,rk809" },
+	{ .compatible = "rockchip,rk817" },
 	{ .compatible = "rockchip,rk818" },
 	{ },
 };
@@ -616,6 +717,15 @@ static int rk808_probe(struct i2c_client *client,
 		suspend_reg_num = ARRAY_SIZE(rk818_suspend_reg);
 		resume_reg = rk818_resume_reg;
 		resume_reg_num = ARRAY_SIZE(rk818_resume_reg);
+		break;
+	case RK809_ID:
+	case RK817_ID:
+		cell = rk817s;
+		cell_num = ARRAY_SIZE(rk817s);
+		pre_init_reg = rk817_pre_init_reg;
+		reg_num = ARRAY_SIZE(rk817_pre_init_reg);
+		regmap_config = &rk817_regmap_config;
+		irq_chip = &rk817_irq_chip;
 		break;
 	default:
 		dev_err(&client->dev, "Unsupported RK8XX ID %lu\n",
@@ -707,46 +817,6 @@ err_irq:
 	return ret;
 }
 
-static int rk808_suspend(struct device *dev)
-{
-	int i, ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	for (i = 0; i < suspend_reg_num; i++) {
-		ret = regmap_update_bits(rk808->regmap,
-					 suspend_reg[i].addr,
-					 suspend_reg[i].mask,
-					 suspend_reg[i].value);
-		if (ret) {
-			dev_err(dev, "0x%x write err\n",
-				suspend_reg[i].addr);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-static int rk808_resume(struct device *dev)
-{
-	int i, ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	for (i = 0; i < resume_reg_num; i++) {
-		ret = regmap_update_bits(rk808->regmap,
-					 resume_reg[i].addr,
-					 resume_reg[i].mask,
-					 resume_reg[i].value);
-		if (ret) {
-			dev_err(dev, "0x%x write err\n",
-				resume_reg[i].addr);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
 static int rk808_remove(struct i2c_client *client)
 {
 	struct rk808 *rk808 = i2c_get_clientdata(client);
@@ -761,16 +831,54 @@ static int rk808_remove(struct i2c_client *client)
 	return 0;
 }
 
-static const struct dev_pm_ops rk808_pm_ops = {
-	.suspend = rk808_suspend,
-	.resume =  rk808_resume,
-};
+static int __maybe_unused rk8xx_suspend(struct device *dev)
+{
+	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
+	int ret = 0;
+	int i;
+
+	for (i = 0; i < suspend_reg_num; i++) {
+		ret = regmap_update_bits(rk808->regmap,
+					 suspend_reg[i].addr,
+					 suspend_reg[i].mask,
+					 suspend_reg[i].value);
+		if (ret) {
+			dev_err(dev, "0x%x write err\n",
+				suspend_reg[i].addr);
+			return ret;
+		}
+	}
+
+	return ret;
+}
+
+static int __maybe_unused rk8xx_resume(struct device *dev)
+{
+	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
+	int ret = 0;
+	int i;
+
+	for (i = 0; i < resume_reg_num; i++) {
+		ret = regmap_update_bits(rk808->regmap,
+					 resume_reg[i].addr,
+					 resume_reg[i].mask,
+					 resume_reg[i].value);
+		if (ret) {
+			dev_err(dev, "0x%x write err\n",
+				resume_reg[i].addr);
+			return ret;
+		}
+	}
+
+	return ret;
+}
+static SIMPLE_DEV_PM_OPS(rk8xx_pm_ops, rk8xx_suspend, rk8xx_resume);
 
 static struct i2c_driver rk808_i2c_driver = {
 	.driver = {
 		.name = "rk808",
 		.of_match_table = rk808_of_match,
-		.pm = &rk808_pm_ops,
+		.pm = &rk8xx_pm_ops,
 	},
 	.probe    = rk808_probe,
 	.remove   = rk808_remove,
