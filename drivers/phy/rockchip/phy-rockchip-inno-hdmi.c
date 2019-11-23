@@ -24,8 +24,6 @@
 #include <linux/iopoll.h>
 #include <linux/rockchip/cpu.h>
 
-#define INNO_HDMI_PHY_TIMEOUT_LOOP_COUNT	1000
-
 #define UPDATE(x, h, l)		(((x) << (l)) & GENMASK((h), (l)))
 
 /* REG: 0x00 */
@@ -314,7 +312,7 @@ struct phy_config {
 };
 
 struct inno_hdmi_phy_ops {
-	void (*init)(struct inno_hdmi_phy *inno);
+	int (*init)(struct inno_hdmi_phy *inno);
 	int (*power_on)(struct inno_hdmi_phy *inno,
 			const struct post_pll_config *cfg,
 			const struct phy_config *phy_cfg);
@@ -448,7 +446,12 @@ static inline void inno_update_bits(struct inno_hdmi_phy *inno, u8 reg,
 	regmap_update_bits(inno->regmap, reg * 4, mask, val);
 }
 
-static u32 inno_hdmi_phy_get_tmdsclk(struct inno_hdmi_phy *inno, int rate)
+#define inno_poll(inno, reg, val, cond, sleep_us, timeout_us) \
+	regmap_read_poll_timeout((inno)->regmap, (reg) * 4, val, cond, \
+				 sleep_us, timeout_us)
+
+static unsigned long inno_hdmi_phy_get_tmdsclk(struct inno_hdmi_phy *inno,
+					       unsigned long rate)
 {
 	int bus_width = phy_get_bus_width(inno->phy);
 	u32 tmdsclk;
@@ -479,7 +482,7 @@ static u32 inno_hdmi_phy_get_tmdsclk(struct inno_hdmi_phy *inno, int rate)
 	return tmdsclk;
 }
 
-static int inno_hdmi_phy_clk_set_rate(struct clk_hw *hw, unsigned long rate,
+static int inno_hdmi_phy_rk3328_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 				      unsigned long parent_rate);
 
 static int inno_hdmi_phy_power_on(struct phy *phy)
@@ -512,7 +515,7 @@ static int inno_hdmi_phy_power_on(struct phy *phy)
 		return -EINVAL;
 
 	dev_dbg(inno->dev, "Inno HDMI PHY Power On\n");
-	inno_hdmi_phy_clk_set_rate(&inno->hw, inno->pixclock, 0);
+	inno_hdmi_phy_rk3328_clk_set_rate(&inno->hw, inno->pixclock, 0);
 
 	if (inno->plat_data->ops->power_on)
 		return inno->plat_data->ops->power_on(inno, cfg, phy_cfg);
@@ -539,7 +542,7 @@ static const struct phy_ops inno_hdmi_phy_ops = {
 	.power_off = inno_hdmi_phy_power_off,
 };
 
-static int inno_hdmi_phy_clk_is_prepared(struct clk_hw *hw)
+static int inno_hdmi_phy_rk3328_clk_is_prepared(struct clk_hw *hw)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 	u8 status;
@@ -552,7 +555,7 @@ static int inno_hdmi_phy_clk_is_prepared(struct clk_hw *hw)
 	return status ? 0 : 1;
 }
 
-static int inno_hdmi_phy_clk_prepare(struct clk_hw *hw)
+static int inno_hdmi_phy_rk3328_clk_prepare(struct clk_hw *hw)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 
@@ -565,7 +568,7 @@ static int inno_hdmi_phy_clk_prepare(struct clk_hw *hw)
 	return 0;
 }
 
-static void inno_hdmi_phy_clk_unprepare(struct clk_hw *hw)
+static void inno_hdmi_phy_rk3328_clk_unprepare(struct clk_hw *hw)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 
@@ -576,7 +579,7 @@ static void inno_hdmi_phy_clk_unprepare(struct clk_hw *hw)
 		inno_update_bits(inno, 0xa0, 1, 1);
 }
 
-static unsigned long inno_hdmi_phy_clk_recalc_rate(struct clk_hw *hw,
+static unsigned long inno_hdmi_phy_rk3328_clk_recalc_rate(struct clk_hw *hw,
 						   unsigned long parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
@@ -587,7 +590,7 @@ static unsigned long inno_hdmi_phy_clk_recalc_rate(struct clk_hw *hw,
 		return inno->pixclock;
 }
 
-static long inno_hdmi_phy_clk_round_rate(struct clk_hw *hw, unsigned long rate,
+static long inno_hdmi_phy_rk3328_clk_round_rate(struct clk_hw *hw, unsigned long rate,
 					 unsigned long *parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
@@ -606,7 +609,7 @@ static long inno_hdmi_phy_clk_round_rate(struct clk_hw *hw, unsigned long rate,
 	return cfg->pixclock;
 }
 
-static int inno_hdmi_phy_clk_set_rate(struct clk_hw *hw, unsigned long rate,
+static int inno_hdmi_phy_rk3328_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 				      unsigned long parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
@@ -637,13 +640,13 @@ static int inno_hdmi_phy_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 	return 0;
 }
 
-static const struct clk_ops inno_hdmi_phy_clk_ops = {
-	.prepare = inno_hdmi_phy_clk_prepare,
-	.unprepare = inno_hdmi_phy_clk_unprepare,
-	.is_prepared = inno_hdmi_phy_clk_is_prepared,
-	.recalc_rate = inno_hdmi_phy_clk_recalc_rate,
-	.round_rate = inno_hdmi_phy_clk_round_rate,
-	.set_rate = inno_hdmi_phy_clk_set_rate,
+static const struct clk_ops inno_hdmi_phy_rk3328_clk_ops = {
+	.prepare = inno_hdmi_phy_rk3328_clk_prepare,
+	.unprepare = inno_hdmi_phy_rk3328_clk_unprepare,
+	.is_prepared = inno_hdmi_phy_rk3328_clk_is_prepared,
+	.recalc_rate = inno_hdmi_phy_rk3328_clk_recalc_rate,
+	.round_rate = inno_hdmi_phy_rk3328_clk_round_rate,
+	.set_rate = inno_hdmi_phy_rk3328_clk_set_rate,
 };
 
 static int inno_hdmi_phy_clk_register(struct inno_hdmi_phy *inno)
@@ -667,7 +670,7 @@ static int inno_hdmi_phy_clk_register(struct inno_hdmi_phy *inno)
 	init.num_parents = 1;
 	init.flags = 0;
 	init.name = "pin_hd20_pclk";
-	init.ops = &inno_hdmi_phy_clk_ops;
+	init.ops = &inno_hdmi_phy_rk3328_clk_ops;
 
 	/* optional override of the clock name */
 	of_property_read_string(np, "clock-output-names", &init.name);
@@ -690,7 +693,7 @@ static int inno_hdmi_phy_clk_register(struct inno_hdmi_phy *inno)
 	return 0;
 }
 
-static void inno_hdmi_phy_rk3228_init(struct inno_hdmi_phy *inno)
+static int inno_hdmi_phy_rk3228_init(struct inno_hdmi_phy *inno)
 {
 	u32 m, v;
 
@@ -706,6 +709,8 @@ static void inno_hdmi_phy_rk3228_init(struct inno_hdmi_phy *inno)
 
 	/* manual power down post-PLL */
 	inno_update_bits(inno, 0xaa, RK3228_POST_PLL_CTRL_MASK, RK3228_POST_PLL_CTRL_MANUAL);
+
+	return 0;
 }
 
 static int
@@ -713,7 +718,7 @@ inno_hdmi_phy_rk3228_power_on(struct inno_hdmi_phy *inno,
 			      const struct post_pll_config *cfg,
 			      const struct phy_config *phy_cfg)
 {
-	int pll_tries;
+	int ret;
 	u32 m, v;
 
 	/* pdata_en disable */
@@ -761,15 +766,11 @@ inno_hdmi_phy_rk3228_power_on(struct inno_hdmi_phy *inno,
 	inno_update_bits(inno, 0xe1, RK3228_TMDS_DRIVER_MASK, RK3228_TMDS_DRIVER_ENABLE);
 
 	/* Wait for post PLL lock */
-	pll_tries = 0;
-	while (!(inno_read(inno, 0xeb) & RK3228_POST_PLL_LOCK_STATUS)) {
-		if (pll_tries == INNO_HDMI_PHY_TIMEOUT_LOOP_COUNT) {
-			dev_err(inno->dev, "Post-PLL unlock\n");
-			return -ETIMEDOUT;
-		}
-
-		pll_tries++;
-		usleep_range(100, 110);
+	ret = inno_poll(inno, 0xeb, v, v & RK3228_POST_PLL_LOCK_STATUS,
+			100, 100000);
+	if (ret) {
+		dev_err(inno->dev, "Post-PLL locking failed\n");
+		return ret;
 	}
 
 	if (cfg->tmdsclock > 340000000)
@@ -797,7 +798,7 @@ static int
 inno_hdmi_phy_rk3228_pre_pll_update(struct inno_hdmi_phy *inno,
 				    const struct pre_pll_config *cfg)
 {
-	int pll_tries;
+	int ret;
 	u32 m, v;
 
 	/* Power down PRE-PLL */
@@ -831,16 +832,13 @@ inno_hdmi_phy_rk3228_pre_pll_update(struct inno_hdmi_phy *inno,
 	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_MASK, RK3228_PRE_PLL_POWER_UP);
 
 	/* Wait for Pre-PLL lock */
-	pll_tries = 0;
-	while (!(inno_read(inno, 0xe8) & RK3228_PRE_PLL_LOCK_STATUS)) {
-		if (pll_tries == INNO_HDMI_PHY_TIMEOUT_LOOP_COUNT) {
-			dev_err(inno->dev, "Pre-PLL unlock\n");
-			return -ETIMEDOUT;
-		}
-
-		pll_tries++;
-		usleep_range(100, 110);
+	ret = inno_poll(inno, 0xeb, v, v & RK3228_POST_PLL_LOCK_STATUS,
+			100, 100000);
+	if (ret) {
+		dev_err(inno->dev, "Post-PLL locking failed\n");
+		return ret;
 	}
+
 
 	return 0;
 }
@@ -938,7 +936,7 @@ static void inno_hdmi_phy_rk3328_power_off(struct inno_hdmi_phy *inno)
 	inno_update_bits(inno, 0xaa, 1, 1);
 }
 
-static void inno_hdmi_phy_rk3328_init(struct inno_hdmi_phy *inno)
+static int inno_hdmi_phy_rk3328_init(struct inno_hdmi_phy *inno)
 {
 	/*
 	 * Use phy internal register control
@@ -958,6 +956,8 @@ static void inno_hdmi_phy_rk3328_init(struct inno_hdmi_phy *inno)
 		/* manual power down post-PLL */
 		inno_hdmi_phy_rk3328_power_off(inno);
 	}
+
+	return 0;
 }
 
 static int
@@ -1091,25 +1091,24 @@ static const struct regmap_config inno_hdmi_phy_regmap_config = {
 
 static int inno_hdmi_phy_probe(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
 	struct inno_hdmi_phy *inno;
 	struct phy_provider *phy_provider;
 	struct resource *res;
 	void __iomem *regs;
 	int ret;
 
-	inno = devm_kzalloc(dev, sizeof(*inno), GFP_KERNEL);
+	inno = devm_kzalloc(&pdev->dev, sizeof(*inno), GFP_KERNEL);
 	if (!inno)
 		return -ENOMEM;
 
-	inno->dev = dev;
+	inno->dev = &pdev->dev;
 
 	inno->plat_data = of_device_get_match_data(inno->dev);
 	if (!inno->plat_data || !inno->plat_data->ops)
 		return -EINVAL;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	regs = devm_ioremap_resource(dev, res);
+	regs = devm_ioremap_resource(inno->dev, res);
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
@@ -1125,17 +1124,17 @@ static int inno_hdmi_phy_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	inno->regmap = devm_regmap_init_mmio(dev, regs,
+	inno->regmap = devm_regmap_init_mmio(inno->dev, regs,
 					     &inno_hdmi_phy_regmap_config);
 	if (IS_ERR(inno->regmap)) {
 		ret = PTR_ERR(inno->regmap);
-		dev_err(dev, "failed to init regmap: %d\n", ret);
+		dev_err(inno->dev, "failed to init regmap: %d\n", ret);
 		goto err_regsmap;
 	}
 
-	inno->phy = devm_phy_create(dev, NULL, &inno_hdmi_phy_ops);
+	inno->phy = devm_phy_create(inno->dev, NULL, &inno_hdmi_phy_ops);
 	if (IS_ERR(inno->phy)) {
-		dev_err(dev, "failed to create HDMI PHY\n");
+		dev_err(inno->dev, "failed to create HDMI PHY\n");
 		ret = PTR_ERR(inno->phy);
 		goto err_phy;
 	}
@@ -1143,9 +1142,9 @@ static int inno_hdmi_phy_probe(struct platform_device *pdev)
 	phy_set_drvdata(inno->phy, inno);
 	phy_set_bus_width(inno->phy, 8);
 
-	phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
+	phy_provider = devm_of_phy_provider_register(inno->dev, of_phy_simple_xlate);
 	if (IS_ERR(phy_provider)) {
-		dev_err(dev, "failed to register PHY provider\n");
+		dev_err(inno->dev, "failed to register PHY provider\n");
 		ret = PTR_ERR(phy_provider);
 		goto err_provider;
 	}
@@ -1160,9 +1159,9 @@ static int inno_hdmi_phy_probe(struct platform_device *pdev)
 	return 0;
 
 err_register:
-	devm_of_phy_provider_unregister(dev, phy_provider);
+	devm_of_phy_provider_unregister(inno->dev, phy_provider);
 err_provider:
-	devm_phy_destroy(dev, inno->phy);
+	devm_phy_destroy(inno->dev, inno->phy);
 err_phy:
 	regmap_exit(inno->regmap);
 err_regsmap:
