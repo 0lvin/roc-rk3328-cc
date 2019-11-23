@@ -98,7 +98,6 @@ struct drm_encoder_funcs {
  */
 struct drm_encoder {
 	struct drm_device *dev;
-	struct device_node *port;
 	struct list_head head;
 
 	struct drm_mode_object base;
@@ -166,7 +165,6 @@ struct drm_encoder {
 	 * are stable and hence known before registering all objects.
 	 */
 	uint32_t possible_clones;
-	bool loader_protect;
 
 	/**
 	 * @crtc: Currently bound CRTC, only really meaningful for non-atomic
