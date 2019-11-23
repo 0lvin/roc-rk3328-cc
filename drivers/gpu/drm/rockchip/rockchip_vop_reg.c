@@ -838,6 +838,25 @@ static const struct vop_data rk3399_vop_lit = {
 	.win_yuv2yuv = rk3399_vop_lit_win_yuv2yuv_data,
 };
 
+static const struct vop_win_data rk3228_vop_win_data[] = {
+	{ .base = 0x00, .phy = &rk3288_win01_data,
+	  .type = DRM_PLANE_TYPE_PRIMARY },
+	{ .base = 0x40, .phy = &rk3288_win01_data,
+	  .type = DRM_PLANE_TYPE_CURSOR },
+};
+
+static const struct vop_data rk3228_vop = {
+	.version = VOP_VERSION(3, 7),
+	.feature = VOP_FEATURE_OUTPUT_RGB10,
+	.intr = &rk3366_vop_intr,
+	.common = &rk3288_common,
+	.modeset = &rk3288_modeset,
+	.output = &rk3399_output,
+	.misc = &rk3368_misc,
+	.win = rk3228_vop_win_data,
+	.win_size = ARRAY_SIZE(rk3228_vop_win_data),
+};
+
 static const int rk3328_vop_intrs[] = {
 	FS_INTR,
 	FS_NEW_INTR,
@@ -920,11 +939,11 @@ static const struct vop_csc rk3328_win2_csc = {
 };
 
 static const struct vop_win_data rk3328_vop_win_data[] = {
-	{ .base = 0xd0, .phy = &rk3368_win01_data,    
+	{ .base = 0xd0, .phy = &rk3368_win01_data,
 	  .csc = &rk3328_win0_csc,
 	  .type = DRM_PLANE_TYPE_PRIMARY,
 	  .feature = WIN_FEATURE_HDR2SDR | WIN_FEATURE_SDR2HDR },
-	{ .base = 0x1d0, .phy = &rk3368_win01_data,    
+	{ .base = 0x1d0, .phy = &rk3368_win01_data,
 	   .csc = &rk3328_win1_csc,
 	  .type = DRM_PLANE_TYPE_OVERLAY,
 	  .feature = WIN_FEATURE_SDR2HDR | WIN_FEATURE_PRE_OVERLAY },
@@ -969,6 +988,8 @@ static const struct of_device_id vop_driver_dt_match[] = {
 	  .data = &rk3399_vop_big },
 	{ .compatible = "rockchip,rk3399-vop-lit",
 	  .data = &rk3399_vop_lit },
+	{ .compatible = "rockchip,rk3228-vop",
+	  .data = &rk3228_vop },
 	{ .compatible = "rockchip,rk3328-vop",
 	  .data = &rk3328_vop },
 	{},

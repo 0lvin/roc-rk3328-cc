@@ -1075,7 +1075,6 @@ struct drm_cmdline_mode {
 struct drm_connector {
 	/** @dev: parent DRM device */
 	struct drm_device *dev;
-	struct device_node *port;
 	/** @kdev: kernel device for sysfs attributes */
 	struct device *kdev;
 	/** @attr: sysfs attributes */

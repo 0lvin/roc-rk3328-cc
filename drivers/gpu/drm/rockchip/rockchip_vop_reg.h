@@ -115,7 +115,7 @@
 #define RK3288_DSP_VACT_ST_END_F1		0x019c
 /* register definition end */
 
-/* rk3328 register definition end */
+/* rk3328 register definition */
 #define RK3328_REG_CFG_DONE			0x00000000
 #define RK3328_VERSION_INFO			0x00000004
 #define RK3328_SYS_CTRL				0x00000008
