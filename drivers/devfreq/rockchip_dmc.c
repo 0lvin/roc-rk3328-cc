@@ -40,7 +40,6 @@
 #include <linux/suspend.h>
 #include <linux/thermal.h>
 
-#include <soc/rockchip/rkfb_dmc.h>
 #include <soc/rockchip/rockchip_dmc.h>
 #include <soc/rockchip/rockchip_sip.h>
 #include <soc/rockchip/rockchip-system-status.h>
@@ -1955,9 +1954,6 @@ static int rockchip_dmcfreq_probe(struct platform_device *pdev)
 
 	if (rockchip_pm_register_notify_to_dmc(data->devfreq))
 		dev_err(dev, "pd fail to register notify to dmc\n");
-
-	if (vop_register_dmc())
-		dev_err(dev, "fail to register notify to vop.\n");
 
 	data->system_status_nb.notifier_call =
 		rockchip_dmcfreq_system_status_notifier;

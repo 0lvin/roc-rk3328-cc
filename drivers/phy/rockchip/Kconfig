@@ -43,13 +43,6 @@ config PHY_ROCKCHIP_INNO_USB3
 	help
 	  Support for Rockchip USB 3.0 PHY with Innosilicon IP block.
 
-config PHY_ROCKCHIP_INNO_HDMI_PHY
-	tristate "Rockchip INNO HDMI PHY Driver"
-	depends on ARCH_ROCKCHIP && OF
-	select GENERIC_PHY
-	help
-	  Enable this to support the Rockchip HDMI PHY with Innosilicon IP block.
-
 config PHY_ROCKCHIP_PCIE
 	tristate "Rockchip PCIe PHY Driver"
 	depends on (ARCH_ROCKCHIP && OF) || COMPILE_TEST
