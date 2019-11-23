@@ -700,7 +700,8 @@ static void hdmi_set_clk_regenerator(struct dw_hdmi *hdmi,
 	config3 = hdmi_readb(hdmi, HDMI_CONFIG3_ID);
 
 	/* Only compute CTS when using internal AHB audio */
-	if (config3 & HDMI_CONFIG3_AHBAUDDMA) {
+	/* broken hdmi sound on rk3328-roc-cc */
+	if (config3 & HDMI_CONFIG3_AHBAUDDMA || 1) {
 		/*
 		 * Compute the CTS value from the N value.  Note that CTS and N
 		 * can be up to 20 bits in total, so we need 64-bit math.  Also
