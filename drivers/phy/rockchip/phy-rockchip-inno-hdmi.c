@@ -268,16 +268,20 @@ struct inno_hdmi_phy_drv_data;
 struct inno_hdmi_phy {
 	struct device *dev;
 	struct regmap *regmap;
+	int irq;
 
 	struct phy *phy;
 	struct clk *sysclk;
+	struct clk *refoclk;
+	struct clk *refpclk;
 
 	/* platform data */
-	struct inno_hdmi_phy_drv_data *plat_data;
+	const struct inno_hdmi_phy_drv_data *plat_data;
+	int chip_version;
 
 	/* clk provider */
 	struct clk_hw hw;
-	struct clk *pclk;
+	struct clk *phyclk;
 	unsigned long pixclock;
 	unsigned long tmdsclock;
 };
@@ -482,6 +486,39 @@ static unsigned long inno_hdmi_phy_get_tmdsclk(struct inno_hdmi_phy *inno,
 	return tmdsclk;
 }
 
+static irqreturn_t inno_hdmi_phy_rk3328_hardirq(int irq, void *dev_id)
+{
+	struct inno_hdmi_phy *inno = dev_id;
+	int intr_stat1, intr_stat2, intr_stat3;
+
+	intr_stat1 = inno_read(inno, 0x04);
+	intr_stat2 = inno_read(inno, 0x06);
+	intr_stat3 = inno_read(inno, 0x08);
+
+	if (intr_stat1)
+		inno_write(inno, 0x04, intr_stat1);
+	if (intr_stat2)
+		inno_write(inno, 0x06, intr_stat2);
+	if (intr_stat3)
+		inno_write(inno, 0x08, intr_stat3);
+
+	if (intr_stat1 || intr_stat2 || intr_stat3)
+		return IRQ_WAKE_THREAD;
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t inno_hdmi_phy_rk3328_irq(int irq, void *dev_id)
+{
+	struct inno_hdmi_phy *inno = dev_id;
+
+	inno_update_bits(inno, 0x02, RK3328_PDATA_EN, 0);
+	usleep_range(10, 20);
+	inno_update_bits(inno, 0x02, RK3328_PDATA_EN, RK3328_PDATA_EN);
+
+	return IRQ_HANDLED;
+}
+
 static int inno_hdmi_phy_rk3328_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 				      unsigned long parent_rate);
 
@@ -542,6 +579,167 @@ static const struct phy_ops inno_hdmi_phy_ops = {
 	.power_off = inno_hdmi_phy_power_off,
 };
 
+static const
+struct pre_pll_config *inno_hdmi_phy_get_pre_pll_cfg(struct inno_hdmi_phy *inno,
+						     unsigned long rate)
+{
+	const struct pre_pll_config *cfg = pre_pll_cfg_table;
+	unsigned long tmdsclock = inno_hdmi_phy_get_tmdsclk(inno, rate);
+
+	for (; cfg->pixclock != 0; cfg++)
+		if (cfg->pixclock == rate && cfg->tmdsclock == tmdsclock)
+			break;
+
+	if (cfg->pixclock == 0)
+		return ERR_PTR(-EINVAL);
+
+	return cfg;
+}
+
+static int inno_hdmi_phy_rk3228_clk_is_prepared(struct clk_hw *hw)
+{
+	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
+	u8 status;
+
+	status = inno_read(inno, 0xe0) & RK3228_PRE_PLL_POWER_DOWN;
+	return status ? 0 : 1;
+}
+
+static int inno_hdmi_phy_rk3228_clk_prepare(struct clk_hw *hw)
+{
+	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
+
+	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_DOWN, 0);
+	return 0;
+}
+
+static void inno_hdmi_phy_rk3228_clk_unprepare(struct clk_hw *hw)
+{
+	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
+
+	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_DOWN,
+			 RK3228_PRE_PLL_POWER_DOWN);
+}
+
+static
+unsigned long inno_hdmi_phy_rk3228_clk_recalc_rate(struct clk_hw *hw,
+						   unsigned long parent_rate)
+{
+	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
+	u8 nd, no_a, no_b, no_d;
+	u64 vco;
+	u16 nf;
+
+	nd = inno_read(inno, 0xe2) & RK3228_PRE_PLL_PRE_DIV_MASK;
+	nf = (inno_read(inno, 0xe2) & RK3228_PRE_PLL_FB_DIV_8_MASK) << 1;
+	nf |= inno_read(inno, 0xe3);
+	vco = parent_rate * nf;
+
+	if (inno_read(inno, 0xe2) & RK3228_PCLK_VCO_DIV_5_MASK) {
+		do_div(vco, nd * 5);
+	} else {
+		no_a = inno_read(inno, 0xe4) & RK3228_PRE_PLL_PCLK_DIV_A_MASK;
+		if (!no_a)
+			no_a = 1;
+		no_b = inno_read(inno, 0xe4) & RK3228_PRE_PLL_PCLK_DIV_B_MASK;
+		no_b >>= RK3228_PRE_PLL_PCLK_DIV_B_SHIFT;
+		no_b += 2;
+		no_d = inno_read(inno, 0xe5) & RK3228_PRE_PLL_PCLK_DIV_D_MASK;
+
+		do_div(vco, (nd * (no_a == 1 ? no_b : no_a) * no_d * 2));
+	}
+
+	inno->pixclock = vco;
+
+	dev_dbg(inno->dev, "%s rate %lu\n", __func__, inno->pixclock);
+
+	return vco;
+}
+
+static long inno_hdmi_phy_rk3228_clk_round_rate(struct clk_hw *hw,
+						unsigned long rate,
+						unsigned long *parent_rate)
+{
+	const struct pre_pll_config *cfg = pre_pll_cfg_table;
+
+	for (; cfg->pixclock != 0; cfg++)
+		if (cfg->pixclock == rate && !cfg->fracdiv)
+			break;
+
+	if (cfg->pixclock == 0)
+		return -EINVAL;
+
+	return cfg->pixclock;
+}
+
+static int inno_hdmi_phy_rk3228_clk_set_rate(struct clk_hw *hw,
+					     unsigned long rate,
+					     unsigned long parent_rate)
+{
+	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
+	const struct pre_pll_config *cfg = pre_pll_cfg_table;
+	unsigned long tmdsclock = inno_hdmi_phy_get_tmdsclk(inno, rate);
+	u32 v;
+	int ret;
+
+	dev_dbg(inno->dev, "%s rate %lu tmdsclk %lu\n",
+		__func__, rate, tmdsclock);
+
+	cfg = inno_hdmi_phy_get_pre_pll_cfg(inno, rate);
+	if (IS_ERR(cfg))
+		return PTR_ERR(cfg);
+
+	/* Power down PRE-PLL */
+	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_DOWN,
+			 RK3228_PRE_PLL_POWER_DOWN);
+
+	inno_update_bits(inno, 0xe2, RK3228_PRE_PLL_FB_DIV_8_MASK |
+			 RK3228_PCLK_VCO_DIV_5_MASK |
+			 RK3228_PRE_PLL_PRE_DIV_MASK,
+			 RK3228_PRE_PLL_FB_DIV_8(cfg->fbdiv) |
+			 RK3228_PCLK_VCO_DIV_5(cfg->vco_div_5_en) |
+			 RK3228_PRE_PLL_PRE_DIV(cfg->prediv));
+	inno_write(inno, 0xe3, RK3228_PRE_PLL_FB_DIV_7_0(cfg->fbdiv));
+	inno_update_bits(inno, 0xe4, RK3228_PRE_PLL_PCLK_DIV_B_MASK |
+			 RK3228_PRE_PLL_PCLK_DIV_A_MASK,
+			 RK3228_PRE_PLL_PCLK_DIV_B(cfg->pclk_div_b) |
+			 RK3228_PRE_PLL_PCLK_DIV_A(cfg->pclk_div_a));
+	inno_update_bits(inno, 0xe5, RK3228_PRE_PLL_PCLK_DIV_C_MASK |
+			 RK3228_PRE_PLL_PCLK_DIV_D_MASK,
+			 RK3228_PRE_PLL_PCLK_DIV_C(cfg->pclk_div_c) |
+			 RK3228_PRE_PLL_PCLK_DIV_D(cfg->pclk_div_d));
+	inno_update_bits(inno, 0xe6, RK3228_PRE_PLL_TMDSCLK_DIV_C_MASK |
+			 RK3228_PRE_PLL_TMDSCLK_DIV_A_MASK |
+			 RK3228_PRE_PLL_TMDSCLK_DIV_B_MASK,
+			 RK3228_PRE_PLL_TMDSCLK_DIV_C(cfg->tmds_div_c) |
+			 RK3228_PRE_PLL_TMDSCLK_DIV_A(cfg->tmds_div_a) |
+			 RK3228_PRE_PLL_TMDSCLK_DIV_B(cfg->tmds_div_b));
+
+	/* Power up PRE-PLL */
+	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_DOWN, 0);
+
+	/* Wait for Pre-PLL lock */
+	ret = inno_poll(inno, 0xe8, v, v & RK3228_PRE_PLL_LOCK_STATUS,
+			100, 100000);
+	if (ret) {
+		dev_err(inno->dev, "Pre-PLL locking failed\n");
+		return ret;
+	}
+
+	inno->pixclock = rate;
+
+	return 0;
+}
+
+static const struct clk_ops inno_hdmi_phy_rk3228_clk_ops = {
+	.prepare = inno_hdmi_phy_rk3228_clk_prepare,
+	.unprepare = inno_hdmi_phy_rk3228_clk_unprepare,
+	.is_prepared = inno_hdmi_phy_rk3228_clk_is_prepared,
+	.recalc_rate = inno_hdmi_phy_rk3228_clk_recalc_rate,
+	.round_rate = inno_hdmi_phy_rk3228_clk_round_rate,
+	.set_rate = inno_hdmi_phy_rk3228_clk_set_rate,
+};
+
 static int inno_hdmi_phy_rk3328_clk_is_prepared(struct clk_hw *hw)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
@@ -590,8 +788,9 @@ static unsigned long inno_hdmi_phy_rk3328_clk_recalc_rate(struct clk_hw *hw,
 		return inno->pixclock;
 }
 
-static long inno_hdmi_phy_rk3328_clk_round_rate(struct clk_hw *hw, unsigned long rate,
-					 unsigned long *parent_rate)
+static long inno_hdmi_phy_rk3328_clk_round_rate(struct clk_hw *hw,
+						unsigned long rate,
+						unsigned long *parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 	const struct pre_pll_config *cfg = pre_pll_cfg_table;
@@ -609,8 +808,9 @@ static long inno_hdmi_phy_rk3328_clk_round_rate(struct clk_hw *hw, unsigned long
 	return cfg->pixclock;
 }
 
-static int inno_hdmi_phy_rk3328_clk_set_rate(struct clk_hw *hw, unsigned long rate,
-				      unsigned long parent_rate)
+static int inno_hdmi_phy_rk3328_clk_set_rate(struct clk_hw *hw,
+					     unsigned long rate,
+					     unsigned long parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 	const struct pre_pll_config *cfg = pre_pll_cfg_table;
@@ -670,23 +870,23 @@ static int inno_hdmi_phy_clk_register(struct inno_hdmi_phy *inno)
 	init.num_parents = 1;
 	init.flags = 0;
 	init.name = "pin_hd20_pclk";
-	init.ops = &inno_hdmi_phy_rk3328_clk_ops;
+	init.ops = inno->plat_data->clk_ops;
 
 	/* optional override of the clock name */
 	of_property_read_string(np, "clock-output-names", &init.name);
 
 	inno->hw.init = &init;
 
-	inno->pclk = devm_clk_register(dev, &inno->hw);
-	if (IS_ERR(inno->pclk)) {
-		ret = PTR_ERR(inno->pclk);
+	inno->phyclk = devm_clk_register(dev, &inno->hw);
+	if (IS_ERR(inno->phyclk)) {
+		ret = PTR_ERR(inno->phyclk);
 		dev_err(dev, "failed to register clock: %d\n", ret);
 		return ret;
 	}
 
-	ret = of_clk_add_provider(np, of_clk_src_simple_get, inno->pclk);
+	ret = of_clk_add_provider(np, of_clk_src_simple_get, inno->phyclk);
 	if (ret) {
-		dev_err(dev, "failed to register OF clock provider: %d\n", ret);
+		dev_err(dev, "failed to register clock provider: %d\n", ret);
 		return ret;
 	}
 
@@ -794,54 +994,11 @@ static void inno_hdmi_phy_rk3228_power_off(struct inno_hdmi_phy *inno)
 			 RK3228_POST_PLL_POWER_DOWN);
 }
 
-static int
-inno_hdmi_phy_rk3228_pre_pll_update(struct inno_hdmi_phy *inno,
-				    const struct pre_pll_config *cfg)
-{
-	int ret;
-	u32 m, v;
-
-	/* Power down PRE-PLL */
-	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_MASK, RK3228_PRE_PLL_POWER_DOWN);
-
-	m = RK3228_PRE_PLL_FB_DIV_8_MASK | RK3228_PCLK_VCO_DIV_5_MASK | RK3228_PRE_PLL_PRE_DIV_MASK;
-	v = RK3228_PRE_PLL_FB_DIV_8(cfg->fbdiv >> 8) |
-	    RK3228_PCLK_VCO_DIV_5(cfg->vco_div_5_en) | RK3228_PRE_PLL_PRE_DIV(cfg->prediv);
-	inno_update_bits(inno, 0xe2, m, v);
-
-	inno_write(inno, 0xe3, RK3228_PRE_PLL_FB_DIV_7_0(cfg->fbdiv));
-
-	m = RK3228_PRE_PLL_PCLK_DIV_B_MASK | RK3228_PRE_PLL_PCLK_DIV_A_MASK;
-	v = RK3228_PRE_PLL_PCLK_DIV_B(cfg->pclk_div_b) |
-	    RK3228_PRE_PLL_PCLK_DIV_A(cfg->pclk_div_a);
-	inno_update_bits(inno, 0xe4, m, v);
-
-	m = RK3228_PRE_PLL_PCLK_DIV_C_MASK | RK3228_PRE_PLL_PCLK_DIV_D_MASK;
-	v = RK3228_PRE_PLL_PCLK_DIV_C(cfg->pclk_div_c) |
-	    RK3228_PRE_PLL_PCLK_DIV_D(cfg->pclk_div_d);
-	inno_update_bits(inno, 0xe5, m, v);
-
-	m = RK3228_PRE_PLL_TMDSCLK_DIV_C_MASK | RK3228_PRE_PLL_TMDSCLK_DIV_A_MASK |
-	    RK3228_PRE_PLL_TMDSCLK_DIV_B_MASK;
-	v = RK3228_PRE_PLL_TMDSCLK_DIV_C(cfg->tmds_div_c) |
-	    RK3228_PRE_PLL_TMDSCLK_DIV_A(cfg->tmds_div_a) |
-	    RK3228_PRE_PLL_TMDSCLK_DIV_B(cfg->tmds_div_b);
-	inno_update_bits(inno, 0xe6, m, v);
-
-	/* Power up PRE-PLL */
-	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_MASK, RK3228_PRE_PLL_POWER_UP);
-
-	/* Wait for Pre-PLL lock */
-	ret = inno_poll(inno, 0xeb, v, v & RK3228_POST_PLL_LOCK_STATUS,
-			100, 100000);
-	if (ret) {
-		dev_err(inno->dev, "Post-PLL locking failed\n");
-		return ret;
-	}
-
-
-	return 0;
-}
+static const struct inno_hdmi_phy_ops rk3228_hdmi_phy_ops = {
+	.init = inno_hdmi_phy_rk3228_init,
+	.power_on = inno_hdmi_phy_rk3228_power_on,
+	.power_off = inno_hdmi_phy_rk3228_power_off,
+};
 
 static int
 inno_hdmi_phy_rk3328_power_on(struct inno_hdmi_phy *inno,
@@ -1055,13 +1212,6 @@ inno_hdmi_3328_phy_pll_recalc_rate(struct inno_hdmi_phy *inno,
 	return rate;
 }
 
-static const struct inno_hdmi_phy_ops rk3228_hdmi_phy_ops = {
-	.init = inno_hdmi_phy_rk3228_init,
-	.power_on = inno_hdmi_phy_rk3228_power_on,
-	.power_off = inno_hdmi_phy_rk3228_power_off,
-	.pre_pll_update = inno_hdmi_phy_rk3228_pre_pll_update,
-};
-
 static const struct inno_hdmi_phy_ops rk3328_hdmi_phy_ops = {
 	.init = inno_hdmi_phy_rk3328_init,
 	.power_on = inno_hdmi_phy_rk3328_power_on,
@@ -1073,12 +1223,14 @@ static const struct inno_hdmi_phy_ops rk3328_hdmi_phy_ops = {
 static const struct inno_hdmi_phy_drv_data rk3228_hdmi_phy_drv_data = {
 	.dev_type = INNO_HDMI_PHY_RK3228,
 	.ops = &rk3228_hdmi_phy_ops,
+	.clk_ops = &inno_hdmi_phy_rk3228_clk_ops,
 	.phy_cfg_table = rk3228_phy_cfg,
 };
 
 static const struct inno_hdmi_phy_drv_data rk3328_hdmi_phy_drv_data = {
 	.dev_type = INNO_HDMI_PHY_RK3328,
 	.ops = &rk3328_hdmi_phy_ops,
+	.clk_ops = &inno_hdmi_phy_rk3328_clk_ops,
 	.phy_cfg_table = rk3328_phy_cfg,
 };
 
@@ -1088,6 +1240,14 @@ static const struct regmap_config inno_hdmi_phy_regmap_config = {
 	.reg_stride = 4,
 	.max_register = 0x400,
 };
+
+static void inno_hdmi_phy_action(void *data)
+{
+	struct inno_hdmi_phy *inno = data;
+
+	clk_disable_unprepare(inno->refpclk);
+	clk_disable_unprepare(inno->sysclk);
+}
 
 static int inno_hdmi_phy_probe(struct platform_device *pdev)
 {
