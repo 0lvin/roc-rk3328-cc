@@ -2,11 +2,10 @@
 /*
  */
 
-#include <linux/mm.h>
 #include <linux/module.h>
-#include <linux/slab.h>
-#include <drm/drm_fb_helper.h>
-#include <drm/drm_probe_helper.h>
+#include <linux/pci.h>
+
+#include <drm/drm_drv.h>
 #include <drm/drm_atomic_helper.h>
 
 #include "bochs.h"
@@ -73,7 +72,6 @@ static struct drm_driver bochs_driver = {
 	.major			= 1,
 	.minor			= 0,
 	DRM_GEM_VRAM_DRIVER,
-	DRM_GEM_VRAM_DRIVER_PRIME,
 };
 
 /* ---------------------------------------------------------------------- */

@@ -221,9 +221,7 @@ struct drm_gem_object_funcs
 GEM objects can now have a function table instead of having the callbacks on the
 DRM driver struct. This is now the preferred way and drivers can be moved over.
 
-DRM_GEM_CMA_VMAP_DRIVER_OPS, DRM_GEM_SHMEM_DRIVER_OPS already support this, but
-DRM_GEM_VRAM_DRIVER_PRIME does not yet and needs to be aligned with the previous
-two. We also need a 2nd version of the CMA define that doesn't require the
+We also need a 2nd version of the CMA define that doesn't require the
 vmapping to be present (different hook for prime importing). Plus this needs to
 be rolled out to all drivers using their own implementations, too.
 
@@ -307,19 +305,6 @@ the cleanup work here is to replace any ``#include <drm/drmP.h>`` by only the
 headers needed (and fixing up any missing pre-declarations in the headers).
 
 In the end no .c file should need to include ``drmP.h`` anymore.
-
-Contact: Daniel Vetter
-
-Add missing kerneldoc for exported functions
---------------------------------------------
-
-The DRM reference documentation is still lacking kerneldoc in a few areas. The
-task would be to clean up interfaces like moving functions around between
-files to better group them and improving the interfaces like dropping return
-values for functions that never fail. Then write kerneldoc for all exported
-functions and an overview section and integrate it all into the drm book.
-
-See https://dri.freedesktop.org/docs/drm/ for what's there already.
 
 Contact: Daniel Vetter
 
