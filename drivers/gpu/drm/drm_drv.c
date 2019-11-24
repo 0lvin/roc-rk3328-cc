@@ -350,11 +350,9 @@ struct drm_device *drm_device_get_by_name(const char *name)
  *		struct drm_device *drm;
  *		int ret;
  *
- *		[
- *		  devm_kzalloc() can't be used here because the drm_device
- *		  lifetime can exceed the device lifetime if driver unbind
- *		  happens when userspace still has open file descriptors.
- *		]
+ *		// devm_kzalloc() can't be used here because the drm_device '
+ *		// lifetime can exceed the device lifetime if driver unbind
+ *		// happens when userspace still has open file descriptors.
  *		priv = kzalloc(sizeof(*priv), GFP_KERNEL);
  *		if (!priv)
  *			return -ENOMEM;
@@ -377,7 +375,7 @@ struct drm_device *drm_device_get_by_name(const char *name)
  *		if (IS_ERR(priv->pclk))
  *			return PTR_ERR(priv->pclk);
  *
- *		[ Further setup, display pipeline etc ]
+ *		// Further setup, display pipeline etc
  *
  *		platform_set_drvdata(pdev, drm);
  *
@@ -392,7 +390,7 @@ struct drm_device *drm_device_get_by_name(const char *name)
  *		return 0;
  *	}
  *
- *	[ This function is called before the devm_ resources are released ]
+ *	// This function is called before the devm_ resources are released
  *	static int driver_remove(struct platform_device *pdev)
  *	{
  *		struct drm_device *drm = platform_get_drvdata(pdev);
@@ -403,7 +401,7 @@ struct drm_device *drm_device_get_by_name(const char *name)
  *		return 0;
  *	}
  *
- *	[ This function is called on kernel restart and shutdown ]
+ *	// This function is called on kernel restart and shutdown
  *	static void driver_shutdown(struct platform_device *pdev)
  *	{
  *		drm_atomic_helper_shutdown(platform_get_drvdata(pdev));
