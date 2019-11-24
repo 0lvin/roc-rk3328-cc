@@ -63,15 +63,15 @@ struct drm_gem_object *radeon_gem_prime_import_sg_table(struct drm_device *dev,
 							struct dma_buf_attachment *attach,
 							struct sg_table *sg)
 {
-	struct reservation_object *resv = attach->dmabuf->resv;
+	struct dma_resv *resv = attach->dmabuf->resv;
 	struct radeon_device *rdev = dev->dev_private;
 	struct radeon_bo *bo;
 	int ret;
 
-	ww_mutex_lock(&resv->lock, NULL);
+	dma_resv_lock(resv, NULL);
 	ret = radeon_bo_create(rdev, attach->dmabuf->size, PAGE_SIZE, false,
 			       RADEON_GEM_DOMAIN_GTT, 0, sg, resv, &bo);
-	ww_mutex_unlock(&resv->lock);
+	dma_resv_unlock(resv);
 	if (ret)
 		return ERR_PTR(ret);
 
@@ -80,7 +80,7 @@ struct drm_gem_object *radeon_gem_prime_import_sg_table(struct drm_device *dev,
 	mutex_unlock(&rdev->gem.mutex);
 
 	bo->prime_shared_count = 1;
-	return &bo->gem_base;
+	return &bo->tbo.base;
 }
 
 int radeon_gem_prime_pin(struct drm_gem_object *obj)

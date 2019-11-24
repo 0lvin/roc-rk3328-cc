@@ -62,16 +62,16 @@ struct drm_gem_object *nouveau_gem_prime_import_sg_table(struct drm_device *dev,
 {
 	struct nouveau_drm *drm = nouveau_drm(dev);
 	struct nouveau_bo *nvbo;
-	struct reservation_object *robj = attach->dmabuf->resv;
+	struct dma_resv *robj = attach->dmabuf->resv;
 	u32 flags = 0;
 	int ret;
 
 	flags = TTM_PL_FLAG_TT;
 
-	ww_mutex_lock(&robj->lock, NULL);
+	dma_resv_lock(robj, NULL);
 	ret = nouveau_bo_new(&drm->client, attach->dmabuf->size, 0, flags, 0, 0,
 			     sg, robj, &nvbo);
-	ww_mutex_unlock(&robj->lock);
+	dma_resv_unlock(robj);
 	if (ret)
 		return ERR_PTR(ret);
 
@@ -79,13 +79,13 @@ struct drm_gem_object *nouveau_gem_prime_import_sg_table(struct drm_device *dev,
 
 	/* Initialize the embedded gem-object. We return a single gem-reference
 	 * to the caller, instead of a normal nouveau_bo ttm reference. */
-	ret = drm_gem_object_init(dev, &nvbo->gem, nvbo->bo.mem.size);
+	ret = drm_gem_object_init(dev, &nvbo->bo.base, nvbo->bo.mem.size);
 	if (ret) {
 		nouveau_bo_ref(NULL, &nvbo);
 		return ERR_PTR(-ENOMEM);
 	}
 
-	return &nvbo->gem;
+	return &nvbo->bo.base;
 }
 
 int nouveau_gem_prime_pin(struct drm_gem_object *obj)
