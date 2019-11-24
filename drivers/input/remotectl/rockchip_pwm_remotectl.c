@@ -399,24 +399,25 @@ static int remotectl_fb_event_notify(struct notifier_block *self, unsigned long 
 {
 	struct fb_event *event = data;
 
-	if (action == FB_EARLY_EVENT_BLANK) {
-		switch (*((int *)event->data)) {
-			case FB_BLANK_UNBLANK:
-				break;
-			default:
-				led_trigger_event(ledtrig_ir_click, LED_OFF);
-				remote_suspend = true;
-				break;
-		}
-	}
-	else if (action == FB_EVENT_BLANK) {
-		switch (*((int *)event->data)) {
-			case FB_BLANK_UNBLANK:
-				remote_suspend = false;
-				led_trigger_event(ledtrig_ir_click, LED_FULL);
-				break;
-			default:
-				break;
+	if (event && event->data) {
+		if (action != FB_EVENT_BLANK) {
+			switch (*((int *)event->data)) {
+				case FB_BLANK_UNBLANK:
+					break;
+				default:
+					led_trigger_event(ledtrig_ir_click, LED_OFF);
+					remote_suspend = true;
+					break;
+			}
+		} else {
+			switch (*((int *)event->data)) {
+				case FB_BLANK_UNBLANK:
+					remote_suspend = false;
+					led_trigger_event(ledtrig_ir_click, LED_FULL);
+					break;
+				default:
+					break;
+			}
 		}
 	}
 	return NOTIFY_OK;

@@ -1306,27 +1306,24 @@ static int rockchip_dmcfreq_fb_notifier(struct notifier_block *nb,
 {
 	struct fb_event *event = ptr;
 
-	switch (action) {
-	case FB_EARLY_EVENT_BLANK:
-		switch (*((int *)event->data)) {
-		case FB_BLANK_UNBLANK:
-			rockchip_clear_system_status(SYS_STATUS_SUSPEND);
-			break;
-		default:
-			break;
+	if (event && event->data) {
+		if (action != FB_EVENT_BLANK) {
+			switch (*((int *)event->data)) {
+			case FB_BLANK_UNBLANK:
+				rockchip_clear_system_status(SYS_STATUS_SUSPEND);
+				break;
+			default:
+				break;
+			}
+		} else {
+			switch (*((int *)event->data)) {
+			case FB_BLANK_POWERDOWN:
+				rockchip_set_system_status(SYS_STATUS_SUSPEND);
+				break;
+			default:
+				break;
+			}
 		}
-		break;
-	case FB_EVENT_BLANK:
-		switch (*((int *)event->data)) {
-		case FB_BLANK_POWERDOWN:
-			rockchip_set_system_status(SYS_STATUS_SUSPEND);
-			break;
-		default:
-			break;
-		}
-		break;
-	default:
-		break;
 	}
 
 	return NOTIFY_OK;
