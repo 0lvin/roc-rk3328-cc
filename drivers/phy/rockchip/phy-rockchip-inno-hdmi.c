@@ -28,57 +28,34 @@
 
 /* REG: 0x00 */
 #define RK3228_PRE_PLL_REFCLK_SEL_PCLK			BIT(0)
-#define PRE_PLL_REFCLK_SEL_PCLK			BIT(0)
-#define PRE_PLL_REFCLK_SEL_OSCCLK		0
 /* REG: 0x01 */
-#define RK3228_BYPASS_RXSENSE_EN_MASK			BIT(2)
 #define RK3228_BYPASS_RXSENSE_EN			BIT(2)
-#define RK3228_BYPASS_PWRON_EN_MASK			BIT(1)
 #define RK3228_BYPASS_PWRON_EN				BIT(1)
-#define RK3228_BYPASS_PLLPD_EN_MASK			BIT(0)
 #define RK3228_BYPASS_PLLPD_EN				BIT(0)
 /* REG: 0x02 */
-#define RK3228_BYPASS_PDATA_EN_MASK			BIT(4)
 #define RK3228_BYPASS_PDATA_EN				BIT(4)
-#define RK3228_PDATAEN_MASK				BIT(0)
 #define RK3228_PDATAEN_DISABLE				BIT(0)
-#define RK3228_PDATAEN_ENABLE				0
 /* REG: 0x03 */
 #define RK3228_BYPASS_AUTO_TERM_RES_CAL			BIT(7)
-#define RK3228_AUDO_TERM_RES_CAL_SPEED_14_8(x)		UPDATE(x, 6, 0)
+#define RK3228_AUTO_TERM_RES_CAL_SPEED_14_8(x)		UPDATE(x, 6, 0)
 /* REG: 0x04 */
-#define RK3228_AUDO_TERM_RES_CAL_SPEED_7_0(x)		UPDATE(x, 7, 0)
+#define RK3228_AUTO_TERM_RES_CAL_SPEED_7_0(x)		UPDATE(x, 7, 0)
 /* REG: 0xaa */
-#define RK3228_POST_PLL_CTRL_MASK			BIT(0)
 #define RK3228_POST_PLL_CTRL_MANUAL			BIT(0)
 /* REG: 0xe0 */
-#define RK3228_POST_PLL_POWER_MASK			BIT(5)
 #define RK3228_POST_PLL_POWER_DOWN			BIT(5)
-#define RK3228_POST_PLL_POWER_UP			0
-#define RK3228_PRE_PLL_POWER_MASK			BIT(4)
 #define RK3228_PRE_PLL_POWER_DOWN			BIT(4)
-#define RK3228_PRE_PLL_POWER_UP				0
-#define RK3228_RXSENSE_CLK_CH_MASK			BIT(3)
 #define RK3228_RXSENSE_CLK_CH_ENABLE			BIT(3)
-#define RK3228_RXSENSE_DATA_CH2_MASK			BIT(2)
 #define RK3228_RXSENSE_DATA_CH2_ENABLE			BIT(2)
-#define RK3228_RXSENSE_DATA_CH1_MASK			BIT(1)
 #define RK3228_RXSENSE_DATA_CH1_ENABLE			BIT(1)
-#define RK3228_RXSENSE_DATA_CH0_MASK			BIT(0)
 #define RK3228_RXSENSE_DATA_CH0_ENABLE			BIT(0)
 /* REG: 0xe1 */
-#define RK3228_BANDGAP_MASK				BIT(4)
 #define RK3228_BANDGAP_ENABLE				BIT(4)
-#define RK3228_BANDGAP_DISABLE				0
-#define RK3228_TMDS_DRIVER_MASK				GENMASK(3, 0)
-#define RK3228_TMDS_DRIVER_ENABLE			UPDATE(0xf, 3, 0)
-#define RK3228_TMDS_DRIVER_DISABLE			0
+#define RK3228_TMDS_DRIVER_ENABLE			GENMASK(3, 0)
 /* REG: 0xe2 */
 #define RK3228_PRE_PLL_FB_DIV_8_MASK			BIT(7)
-#define RK3228_PRE_PLL_FB_DIV_8_SHIFT			7
-#define RK3228_PRE_PLL_FB_DIV_8(x)			UPDATE(x, 7, 7)
+#define RK3228_PRE_PLL_FB_DIV_8(x)			UPDATE((x) >> 8, 7, 7)
 #define RK3228_PCLK_VCO_DIV_5_MASK			BIT(5)
-#define RK3228_PCLK_VCO_DIV_5_SHIFT			5
 #define RK3228_PCLK_VCO_DIV_5(x)			UPDATE(x, 5, 5)
 #define RK3228_PRE_PLL_PRE_DIV_MASK			GENMASK(4, 0)
 #define RK3228_PRE_PLL_PRE_DIV(x)			UPDATE(x, 4, 0)
@@ -89,14 +66,11 @@
 #define RK3228_PRE_PLL_PCLK_DIV_B_SHIFT			5
 #define RK3228_PRE_PLL_PCLK_DIV_B(x)			UPDATE(x, 6, 5)
 #define RK3228_PRE_PLL_PCLK_DIV_A_MASK			GENMASK(4, 0)
-#define RK3228_PRE_PLL_PCLK_DIV_A_SHIFT			0
 #define RK3228_PRE_PLL_PCLK_DIV_A(x)			UPDATE(x, 4, 0)
 /* REG: 0xe5 */
 #define RK3228_PRE_PLL_PCLK_DIV_C_MASK			GENMASK(6, 5)
-#define RK3228_PRE_PLL_PCLK_DIV_C_SHIFT			5
 #define RK3228_PRE_PLL_PCLK_DIV_C(x)			UPDATE(x, 6, 5)
 #define RK3228_PRE_PLL_PCLK_DIV_D_MASK			GENMASK(4, 0)
-#define RK3228_PRE_PLL_PCLK_DIV_D_SHIFT			0
 #define RK3228_PRE_PLL_PCLK_DIV_D(x)			UPDATE(x, 4, 0)
 /* REG: 0xe6 */
 #define RK3228_PRE_PLL_TMDSCLK_DIV_C_MASK		GENMASK(5, 4)
@@ -108,23 +82,19 @@
 /* REG: 0xe8 */
 #define RK3228_PRE_PLL_LOCK_STATUS			BIT(0)
 /* REG: 0xe9 */
-#define RK3228_POST_PLL_POST_DIV_EN_MASK		GENMASK(7, 6)
 #define RK3228_POST_PLL_POST_DIV_ENABLE			UPDATE(3, 7, 6)
-#define RK3228_POST_PLL_POST_DIV_DISABLE		0
 #define RK3228_POST_PLL_PRE_DIV_MASK			GENMASK(4, 0)
 #define RK3228_POST_PLL_PRE_DIV(x)			UPDATE(x, 4, 0)
 /* REG: 0xea */
 #define RK3228_POST_PLL_FB_DIV_7_0(x)			UPDATE(x, 7, 0)
 /* REG: 0xeb */
 #define RK3228_POST_PLL_FB_DIV_8_MASK			BIT(7)
-#define RK3228_POST_PLL_FB_DIV_8(x)			UPDATE(x, 7, 7)
+#define RK3228_POST_PLL_FB_DIV_8(x)			UPDATE((x) >> 8, 7, 7)
 #define RK3228_POST_PLL_POST_DIV_MASK			GENMASK(5, 4)
 #define RK3228_POST_PLL_POST_DIV(x)			UPDATE(x, 5, 4)
 #define RK3228_POST_PLL_LOCK_STATUS			BIT(0)
 /* REG: 0xee */
-#define RK3228_TMDS_CH_TA_MASK				GENMASK(7, 4)
-#define RK3228_TMDS_CH_TA_ENABLE			UPDATE(0xf, 7, 4)
-#define RK3228_TMDS_CH_TA_DISABLE			0
+#define RK3228_TMDS_CH_TA_ENABLE			GENMASK(7, 4)
 /* REG: 0xef */
 #define RK3228_TMDS_CLK_CH_TA(x)			UPDATE(x, 7, 6)
 #define RK3228_TMDS_DATA_CH2_TA(x)			UPDATE(x, 5, 4)
@@ -745,11 +715,7 @@ static int inno_hdmi_phy_rk3328_clk_is_prepared(struct clk_hw *hw)
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 	u8 status;
 
-	if (inno->plat_data->dev_type == INNO_HDMI_PHY_RK3228)
-		status = inno_read(inno, 0xe0) & RK3228_PRE_PLL_POWER_MASK;
-	else
-		status = inno_read(inno, 0xa0) & 1;
-
+	status = inno_read(inno, 0xa0) & RK3328_PRE_PLL_POWER_DOWN;
 	return status ? 0 : 1;
 }
 
@@ -757,12 +723,7 @@ static int inno_hdmi_phy_rk3328_clk_prepare(struct clk_hw *hw)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 
-	if (inno->plat_data->dev_type == INNO_HDMI_PHY_RK3228)
-		inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_MASK,
-				 RK3228_PRE_PLL_POWER_UP);
-	else
-		inno_update_bits(inno, 0xa0, 1, 0);
-
+	inno_update_bits(inno, 0xa0, RK3328_PRE_PLL_POWER_DOWN, 0);
 	return 0;
 }
 
@@ -770,14 +731,12 @@ static void inno_hdmi_phy_rk3328_clk_unprepare(struct clk_hw *hw)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 
-	if (inno->plat_data->dev_type == INNO_HDMI_PHY_RK3228)
-		inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_MASK,
-				 RK3228_PRE_PLL_POWER_DOWN);
-	else
-		inno_update_bits(inno, 0xa0, 1, 1);
+	inno_update_bits(inno, 0xa0, RK3328_PRE_PLL_POWER_DOWN,
+			 RK3328_PRE_PLL_POWER_DOWN);
 }
 
-static unsigned long inno_hdmi_phy_rk3328_clk_recalc_rate(struct clk_hw *hw,
+static
+unsigned long inno_hdmi_phy_rk3328_clk_recalc_rate(struct clk_hw *hw,
 						   unsigned long parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
@@ -792,7 +751,6 @@ static long inno_hdmi_phy_rk3328_clk_round_rate(struct clk_hw *hw,
 						unsigned long rate,
 						unsigned long *parent_rate)
 {
-	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 	const struct pre_pll_config *cfg = pre_pll_cfg_table;
 
 	for (; cfg->pixclock != ~0UL; cfg++)
@@ -802,8 +760,6 @@ static long inno_hdmi_phy_rk3328_clk_round_rate(struct clk_hw *hw,
 	/* XXX: Limit pixel clock under 600MHz */
 	if (cfg->pixclock > 600000000)
 		return -EINVAL;
-
-	dev_dbg(inno->dev, "%s: rate=%ld\n", __func__, cfg->pixclock);
 
 	return cfg->pixclock;
 }
@@ -895,20 +851,21 @@ static int inno_hdmi_phy_clk_register(struct inno_hdmi_phy *inno)
 
 static int inno_hdmi_phy_rk3228_init(struct inno_hdmi_phy *inno)
 {
-	u32 m, v;
-
 	/*
 	 * Use phy internal register control
 	 * rxsense/poweron/pllpd/pdataen signal.
 	 */
-	m = RK3228_BYPASS_RXSENSE_EN_MASK | RK3228_BYPASS_PWRON_EN_MASK |
-	    RK3228_BYPASS_PLLPD_EN_MASK;
-	v = RK3228_BYPASS_RXSENSE_EN | RK3228_BYPASS_PWRON_EN | RK3228_BYPASS_PLLPD_EN;
-	inno_update_bits(inno, 0x01, m, v);
-	inno_update_bits(inno, 0x02, RK3228_BYPASS_PDATA_EN_MASK, RK3228_BYPASS_PDATA_EN);
+	inno_write(inno, 0x01, RK3228_BYPASS_RXSENSE_EN |
+		   RK3228_BYPASS_PWRON_EN |
+		   RK3228_BYPASS_PLLPD_EN);
+	inno_update_bits(inno, 0x02, RK3228_BYPASS_PDATA_EN,
+			 RK3228_BYPASS_PDATA_EN);
 
 	/* manual power down post-PLL */
-	inno_update_bits(inno, 0xaa, RK3228_POST_PLL_CTRL_MASK, RK3228_POST_PLL_CTRL_MANUAL);
+	inno_update_bits(inno, 0xaa, RK3228_POST_PLL_CTRL_MANUAL,
+			 RK3228_POST_PLL_CTRL_MANUAL);
+
+	inno->chip_version = 1;
 
 	return 0;
 }
@@ -919,51 +876,43 @@ inno_hdmi_phy_rk3228_power_on(struct inno_hdmi_phy *inno,
 			      const struct phy_config *phy_cfg)
 {
 	int ret;
-	u32 m, v;
+	u32 v;
 
-	/* pdata_en disable */
-	inno_update_bits(inno, 0x02, RK3228_PDATAEN_MASK, RK3228_PDATAEN_DISABLE);
-
-	/* Power down Post-PLL */
-	inno_update_bits(inno, 0xe0, RK3228_POST_PLL_POWER_MASK, RK3228_POST_PLL_POWER_DOWN);
+	inno_update_bits(inno, 0x02, RK3228_PDATAEN_DISABLE,
+			 RK3228_PDATAEN_DISABLE);
+	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_DOWN |
+			 RK3228_POST_PLL_POWER_DOWN,
+			 RK3228_PRE_PLL_POWER_DOWN |
+			 RK3228_POST_PLL_POWER_DOWN);
 
 	/* Post-PLL update */
-	m = RK3228_POST_PLL_PRE_DIV_MASK;
-	v = RK3228_POST_PLL_PRE_DIV(cfg->prediv);
-	inno_update_bits(inno, 0xe9, m, v);
-
-	m = RK3228_POST_PLL_FB_DIV_8_MASK;
-	v = RK3228_POST_PLL_FB_DIV_8(cfg->fbdiv >> 8);
-	inno_update_bits(inno, 0xeb, m, v);
+	inno_update_bits(inno, 0xe9, RK3228_POST_PLL_PRE_DIV_MASK,
+			 RK3228_POST_PLL_PRE_DIV(cfg->prediv));
+	inno_update_bits(inno, 0xeb, RK3228_POST_PLL_FB_DIV_8_MASK,
+			 RK3228_POST_PLL_FB_DIV_8(cfg->fbdiv));
 	inno_write(inno, 0xea, RK3228_POST_PLL_FB_DIV_7_0(cfg->fbdiv));
 
 	if (cfg->postdiv == 1) {
-		/* Disable Post-PLL post divider */
-		m = RK3228_POST_PLL_POST_DIV_EN_MASK;
-		v = RK3228_POST_PLL_POST_DIV_DISABLE;
-		inno_update_bits(inno, 0xe9, m, v);
+		inno_update_bits(inno, 0xe9, RK3228_POST_PLL_POST_DIV_ENABLE,
+				 0);
 	} else {
-		/* Enable Post-PLL post divider */
-		m = RK3228_POST_PLL_POST_DIV_EN_MASK;
-		v = RK3228_POST_PLL_POST_DIV_ENABLE;
-		inno_update_bits(inno, 0xe9, m, v);
+		int div = cfg->postdiv / 2 - 1;
 
-		m = RK3228_POST_PLL_POST_DIV_MASK;
-		v = RK3228_POST_PLL_POST_DIV(cfg->postdiv / 2 - 1);
-		inno_update_bits(inno, 0xeb, m, v);
+		inno_update_bits(inno, 0xe9, RK3228_POST_PLL_POST_DIV_ENABLE,
+				 RK3228_POST_PLL_POST_DIV_ENABLE);
+		inno_update_bits(inno, 0xeb, RK3228_POST_PLL_POST_DIV_MASK,
+				 RK3228_POST_PLL_POST_DIV(div));
 	}
 
 	for (v = 0; v < 4; v++)
 		inno_write(inno, 0xef + v, phy_cfg->regs[v]);
 
-	/* Power up Post-PLL */
-	inno_update_bits(inno, 0xe0, RK3228_POST_PLL_POWER_MASK, RK3228_POST_PLL_POWER_UP);
-
-	/* BandGap enable */
-	inno_update_bits(inno, 0xe1, RK3228_BANDGAP_MASK, RK3228_BANDGAP_ENABLE);
-
-	/* TMDS driver enable */
-	inno_update_bits(inno, 0xe1, RK3228_TMDS_DRIVER_MASK, RK3228_TMDS_DRIVER_ENABLE);
+	inno_update_bits(inno, 0xe0, RK3228_PRE_PLL_POWER_DOWN |
+			 RK3228_POST_PLL_POWER_DOWN, 0);
+	inno_update_bits(inno, 0xe1, RK3228_BANDGAP_ENABLE,
+			 RK3228_BANDGAP_ENABLE);
+	inno_update_bits(inno, 0xe1, RK3228_TMDS_DRIVER_ENABLE,
+			 RK3228_TMDS_DRIVER_ENABLE);
 
 	/* Wait for post PLL lock */
 	ret = inno_poll(inno, 0xeb, v, v & RK3228_POST_PLL_LOCK_STATUS,
@@ -976,21 +925,15 @@ inno_hdmi_phy_rk3228_power_on(struct inno_hdmi_phy *inno,
 	if (cfg->tmdsclock > 340000000)
 		msleep(100);
 
-	/* pdata_en enable */
-	inno_update_bits(inno, 0x02, RK3228_PDATAEN_MASK, RK3228_PDATAEN_ENABLE);
+	inno_update_bits(inno, 0x02, RK3228_PDATAEN_DISABLE, 0);
 	return 0;
 }
 
 static void inno_hdmi_phy_rk3228_power_off(struct inno_hdmi_phy *inno)
 {
-	/* TMDS driver Disable */
-	inno_update_bits(inno, 0xe1, RK3228_TMDS_DRIVER_MASK, RK3228_TMDS_DRIVER_DISABLE);
-
-	/* BandGap Disable */
-	inno_update_bits(inno, 0xe1, RK3228_BANDGAP_MASK, RK3228_BANDGAP_DISABLE);
-
-	/* Post-PLL power down */
-	inno_update_bits(inno, 0xe0, RK3228_POST_PLL_POWER_MASK, 
+	inno_update_bits(inno, 0xe1, RK3228_TMDS_DRIVER_ENABLE, 0);
+	inno_update_bits(inno, 0xe1, RK3228_BANDGAP_ENABLE, 0);
+	inno_update_bits(inno, 0xe0, RK3228_POST_PLL_POWER_DOWN,
 			 RK3228_POST_PLL_POWER_DOWN);
 }
 
@@ -999,6 +942,32 @@ static const struct inno_hdmi_phy_ops rk3228_hdmi_phy_ops = {
 	.power_on = inno_hdmi_phy_rk3228_power_on,
 	.power_off = inno_hdmi_phy_rk3228_power_off,
 };
+
+static void inno_hdmi_phy_rk3328_power_off(struct inno_hdmi_phy *inno);
+
+static int inno_hdmi_phy_rk3328_init(struct inno_hdmi_phy *inno)
+{
+	/*
+	 * Use phy internal register control
+	 * rxsense/poweron/pllpd/pdataen signal.
+	 */
+	inno_write(inno, 0x01, 0x07);
+	inno_write(inno, 0x02, 0x91);
+
+	/*
+	 * reg0xc8 default value is 0xc0, if phy had been set in uboot,
+	 * the value of bit[7:6] will be zero.
+	 */
+	if ((inno_read(inno, 0xc8) & 0xc0) == 0) {
+		dev_info(inno->dev, "phy had been powered up\n");
+		inno->phy->power_count = 1;
+	} else {
+		/* manual power down post-PLL */
+		inno_hdmi_phy_rk3328_power_off(inno);
+	}
+
+	return 0;
+}
 
 static int
 inno_hdmi_phy_rk3328_power_on(struct inno_hdmi_phy *inno,
@@ -1091,30 +1060,6 @@ static void inno_hdmi_phy_rk3328_power_off(struct inno_hdmi_phy *inno)
 	inno_update_bits(inno, 0xb0, 4, 0);
 	/* Power off post pll */
 	inno_update_bits(inno, 0xaa, 1, 1);
-}
-
-static int inno_hdmi_phy_rk3328_init(struct inno_hdmi_phy *inno)
-{
-	/*
-	 * Use phy internal register control
-	 * rxsense/poweron/pllpd/pdataen signal.
-	 */
-	inno_write(inno, 0x01, 0x07);
-	inno_write(inno, 0x02, 0x91);
-
-	/*
-	 * reg0xc8 default value is 0xc0, if phy had been set in uboot,
-	 * the value of bit[7:6] will be zero.
-	 */
-	if ((inno_read(inno, 0xc8) & 0xc0) == 0) {
-		dev_info(inno->dev, "phy had been powered up\n");
-		inno->phy->power_count = 1;
-	} else {
-		/* manual power down post-PLL */
-		inno_hdmi_phy_rk3328_power_off(inno);
-	}
-
-	return 0;
 }
 
 static int
