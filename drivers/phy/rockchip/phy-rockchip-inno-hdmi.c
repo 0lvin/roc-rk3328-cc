@@ -810,17 +810,10 @@ static int inno_hdmi_phy_clk_register(struct inno_hdmi_phy *inno)
 	struct device *dev = inno->dev;
 	struct device_node *np = dev->of_node;
 	struct clk_init_data init;
-	struct clk *refclk;
 	const char *parent_name;
 	int ret;
 
-	refclk = devm_clk_get(dev, "refclk");
-	if (IS_ERR(refclk)) {
-		dev_err(dev, "failed to get ref clock\n");
-		return PTR_ERR(refclk);
-	}
-
-	parent_name = __clk_get_name(refclk);
+	parent_name = __clk_get_name(inno->refoclk);
 
 	init.parent_names = &parent_name;
 	init.num_parents = 1;
@@ -1223,6 +1216,15 @@ static int inno_hdmi_phy_probe(struct platform_device *pdev)
 		dev_err(inno->dev, "failed to get sysclk: %d\n", ret);
 		return ret;
 	}
+
+	inno->refoclk = devm_clk_get(inno->dev, "refoclk");
+	if (IS_ERR(inno->refoclk)) {
+		ret = PTR_ERR(inno->refoclk);
+		dev_err(inno->dev, "failed to get oscillator-ref clock: %d\n",
+			ret);
+		return ret;
+	}
+
 	ret = clk_prepare_enable(inno->sysclk);
 	if (ret) {
 		dev_err(inno->dev, "Cannot enable inno phy sysclk: %d\n", ret);
