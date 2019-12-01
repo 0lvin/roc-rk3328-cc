@@ -160,11 +160,6 @@ struct dw_hdmi_plat_data {
 			     const struct dw_hdmi_plat_data *pdata,
 			     unsigned long mpixelclock);
 
-	unsigned long (*get_input_bus_format)(void *data);
-	unsigned long (*get_output_bus_format)(void *data);
-	unsigned long (*get_enc_in_encoding)(void *data);
-	unsigned long (*get_enc_out_encoding)(void *data);
-
 	/* Vendor Property support */
 	const struct dw_hdmi_property_ops *property_ops;
 };
