@@ -753,12 +753,11 @@ static long inno_hdmi_phy_rk3328_clk_round_rate(struct clk_hw *hw,
 {
 	const struct pre_pll_config *cfg = pre_pll_cfg_table;
 
-	for (; cfg->pixclock != ~0UL; cfg++)
+	for (; cfg->pixclock != 0; cfg++)
 		if (cfg->pixclock == rate)
 			break;
 
-	/* XXX: Limit pixel clock under 600MHz */
-	if (cfg->pixclock > 600000000)
+	if (cfg->pixclock == 0)
 		return -EINVAL;
 
 	return cfg->pixclock;
@@ -969,15 +968,14 @@ inno_hdmi_phy_rk3328_power_on(struct inno_hdmi_phy *inno,
 {
 	u32 val;
 
-	/* set pdata_en to 0 */
-	inno_update_bits(inno, 0x02, 1, 0);
-	/* Power off post PLL */
-	inno_update_bits(inno, 0xaa, 1, 1);
+	inno_update_bits(inno, 0x02, RK3328_PDATA_EN, 0);
+	inno_update_bits(inno, 0xaa, RK3328_POST_PLL_POWER_DOWN,
+			 RK3328_POST_PLL_POWER_DOWN);
 
 	val = cfg->fbdiv & 0xff;
 	inno_write(inno, 0xac, val);
 	if (cfg->postdiv == 1) {
-		inno_write(inno, 0xaa, 2);
+		inno_write(inno, 0xaa, RK3328_POST_PLL_REFCLK_SEL_TMDS);
 		val = (cfg->fbdiv >> 8) | cfg->prediv;
 		inno_write(inno, 0xab, val);
 	} else {
@@ -985,7 +983,8 @@ inno_hdmi_phy_rk3328_power_on(struct inno_hdmi_phy *inno,
 		inno_write(inno, 0xad, val);
 		val = (cfg->fbdiv >> 8) | cfg->prediv;
 		inno_write(inno, 0xab, val);
-		inno_write(inno, 0xaa, 0x0e);
+		inno_write(inno, 0xaa, RK3328_POST_PLL_POST_DIV_ENABLE |
+			   RK3328_POST_PLL_REFCLK_SEL_TMDS);
 	}
 
 	for (val = 0; val < 14; val++)
@@ -1024,7 +1023,8 @@ inno_hdmi_phy_rk3328_power_on(struct inno_hdmi_phy *inno,
 	/* Power up post PLL */
 	inno_update_bits(inno, 0xaa, 1, 0);
 	/* Power up tmds driver */
-	inno_update_bits(inno, 0xb0, 4, 4);
+	inno_update_bits(inno, 0xb0, RK3328_BANDGAP_ENABLE,
+			 RK3328_BANDGAP_ENABLE);
 	inno_write(inno, 0xb2, 0x0f);
 
 	/* Wait for post PLL lock */
@@ -1039,8 +1039,8 @@ inno_hdmi_phy_rk3328_power_on(struct inno_hdmi_phy *inno,
 	}
 	if (phy_cfg->tmdsclock > 340000000)
 		msleep(100);
-	/* set pdata_en to 1 */
-	inno_update_bits(inno, 0x02, 1, 1);
+
+	inno_update_bits(inno, 0x02, RK3328_PDATA_EN, RK3328_PDATA_EN);
 
 	return 0;
 }
@@ -1049,10 +1049,9 @@ static void inno_hdmi_phy_rk3328_power_off(struct inno_hdmi_phy *inno)
 {
 	/* Power off driver */
 	inno_write(inno, 0xb2, 0);
-	/* Power off band gap */
-	inno_update_bits(inno, 0xb0, 4, 0);
-	/* Power off post pll */
-	inno_update_bits(inno, 0xaa, 1, 1);
+	inno_update_bits(inno, 0xb0, RK3328_BANDGAP_ENABLE, 0);
+	inno_update_bits(inno, 0xaa, RK3328_POST_PLL_POWER_DOWN,
+			 RK3328_POST_PLL_POWER_DOWN);
 }
 
 static int
