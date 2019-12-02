@@ -428,32 +428,18 @@ static unsigned long inno_hdmi_phy_get_tmdsclk(struct inno_hdmi_phy *inno,
 					       unsigned long rate)
 {
 	int bus_width = phy_get_bus_width(inno->phy);
-	u32 tmdsclk;
 
 	switch (bus_width) {
 	case 4:
-		tmdsclk = (u32)rate / 2;
-		break;
 	case 5:
-		tmdsclk = (u32)rate * 5 / 8;
-		break;
 	case 6:
-		tmdsclk = (u32)rate * 3 / 4;
-		break;
 	case 10:
-		tmdsclk = (u32)rate * 5 / 4;
-		break;
 	case 12:
-		tmdsclk = (u32)rate * 3 / 2;
-		break;
 	case 16:
-		tmdsclk = (u32)rate * 2;
-		break;
+		return (u64)rate * bus_width / 8;
 	default:
-		tmdsclk = rate;
+		return rate;
 	}
-
-	return tmdsclk;
 }
 
 static irqreturn_t inno_hdmi_phy_rk3328_hardirq(int irq, void *dev_id)
@@ -740,11 +726,42 @@ unsigned long inno_hdmi_phy_rk3328_clk_recalc_rate(struct clk_hw *hw,
 						   unsigned long parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
+	unsigned long frac;
+	u8 nd, no_a, no_b, no_c, no_d;
+	u64 vco;
+	u16 nf;
 
-	if (inno->plat_data->ops->recalc_rate)
-		return inno->plat_data->ops->recalc_rate(inno, parent_rate);
-	else
-		return inno->pixclock;
+	nd = inno_read(inno, 0xa1) & RK3328_PRE_PLL_PRE_DIV_MASK;
+	nf = ((inno_read(inno, 0xa2) & RK3328_PRE_PLL_FB_DIV_11_8_MASK) << 8);
+	nf |= inno_read(inno, 0xa3);
+	vco = parent_rate * nf;
+
+	if (!(inno_read(inno, 0xa2) & RK3328_PRE_PLL_FRAC_DIV_DISABLE)) {
+		frac = inno_read(inno, 0xd3) |
+		       (inno_read(inno, 0xd2) << 8) |
+		       (inno_read(inno, 0xd1) << 16);
+		vco += DIV_ROUND_CLOSEST(parent_rate * frac, (1 << 24));
+	}
+
+	if (inno_read(inno, 0xa0) & RK3328_PCLK_VCO_DIV_5_MASK) {
+		do_div(vco, nd * 5);
+	} else {
+		no_a = inno_read(inno, 0xa5) & RK3328_PRE_PLL_PCLK_DIV_A_MASK;
+		no_b = inno_read(inno, 0xa5) & RK3328_PRE_PLL_PCLK_DIV_B_MASK;
+		no_b >>= RK3328_PRE_PLL_PCLK_DIV_B_SHIFT;
+		no_b += 2;
+		no_c = inno_read(inno, 0xa6) & RK3328_PRE_PLL_PCLK_DIV_C_MASK;
+		no_c >>= RK3328_PRE_PLL_PCLK_DIV_C_SHIFT;
+		no_c = 1 << no_c;
+		no_d = inno_read(inno, 0xa6) & RK3328_PRE_PLL_PCLK_DIV_D_MASK;
+
+		do_div(vco, (nd * (no_a == 1 ? no_b : no_a) * no_d * 2));
+	}
+
+	inno->pixclock = vco;
+	dev_dbg(inno->dev, "%s rate %lu\n", __func__, inno->pixclock);
+
+	return vco;
 }
 
 static long inno_hdmi_phy_rk3328_clk_round_rate(struct clk_hw *hw,
@@ -769,28 +786,52 @@ static int inno_hdmi_phy_rk3328_clk_set_rate(struct clk_hw *hw,
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
 	const struct pre_pll_config *cfg = pre_pll_cfg_table;
-	u32 tmdsclock = inno_hdmi_phy_get_tmdsclk(inno, rate);
+	unsigned long tmdsclock = inno_hdmi_phy_get_tmdsclk(inno, rate);
+	u32 val;
+	int ret;
 
-	dev_dbg(inno->dev, "%s rate %lu tmdsclk %u\n",
+	dev_dbg(inno->dev, "%s rate %lu tmdsclk %lu\n",
 		__func__, rate, tmdsclock);
 
-	if (inno->tmdsclock == tmdsclock)
-		return 0;
+	cfg = inno_hdmi_phy_get_pre_pll_cfg(inno, rate);
+	if (IS_ERR(cfg))
+		return PTR_ERR(cfg);
 
-	for (; cfg->pixclock != ~0UL; cfg++)
-		if (cfg->pixclock == rate && cfg->tmdsclock == tmdsclock)
-			break;
+	inno_update_bits(inno, 0xa0, RK3328_PRE_PLL_POWER_DOWN,
+			 RK3328_PRE_PLL_POWER_DOWN);
 
-	if (cfg->pixclock == ~0UL) {
-		dev_err(inno->dev, "unsupported rate %lu\n", rate);
-		return -EINVAL;
+	/* Configure pre-pll */
+	inno_update_bits(inno, 0xa0, RK3228_PCLK_VCO_DIV_5_MASK,
+			 RK3228_PCLK_VCO_DIV_5(cfg->vco_div_5_en));
+	inno_write(inno, 0xa1, RK3328_PRE_PLL_PRE_DIV(cfg->prediv));
+
+	val = RK3328_SPREAD_SPECTRUM_MOD_DISABLE;
+	if (!cfg->fracdiv)
+		val |= RK3328_PRE_PLL_FRAC_DIV_DISABLE;
+	inno_write(inno, 0xa2, RK3328_PRE_PLL_FB_DIV_11_8(cfg->fbdiv) | val);
+	inno_write(inno, 0xa3, RK3328_PRE_PLL_FB_DIV_7_0(cfg->fbdiv));
+	inno_write(inno, 0xa5, RK3328_PRE_PLL_PCLK_DIV_A(cfg->pclk_div_a) |
+		   RK3328_PRE_PLL_PCLK_DIV_B(cfg->pclk_div_b));
+	inno_write(inno, 0xa6, RK3328_PRE_PLL_PCLK_DIV_C(cfg->pclk_div_c) |
+		   RK3328_PRE_PLL_PCLK_DIV_D(cfg->pclk_div_d));
+	inno_write(inno, 0xa4, RK3328_PRE_PLL_TMDSCLK_DIV_C(cfg->tmds_div_c) |
+		   RK3328_PRE_PLL_TMDSCLK_DIV_A(cfg->tmds_div_a) |
+		   RK3328_PRE_PLL_TMDSCLK_DIV_B(cfg->tmds_div_b));
+	inno_write(inno, 0xd3, RK3328_PRE_PLL_FRAC_DIV_7_0(cfg->fracdiv));
+	inno_write(inno, 0xd2, RK3328_PRE_PLL_FRAC_DIV_15_8(cfg->fracdiv));
+	inno_write(inno, 0xd1, RK3328_PRE_PLL_FRAC_DIV_23_16(cfg->fracdiv));
+
+	inno_update_bits(inno, 0xa0, RK3328_PRE_PLL_POWER_DOWN, 0);
+
+	/* Wait for Pre-PLL lock */
+	ret = inno_poll(inno, 0xa9, val, val & RK3328_PRE_PLL_LOCK_STATUS,
+			1000, 10000);
+	if (ret) {
+		dev_err(inno->dev, "Pre-PLL locking failed\n");
+		return ret;
 	}
 
-	if (inno->plat_data->ops->pre_pll_update)
-		inno->plat_data->ops->pre_pll_update(inno, cfg);
-
 	inno->pixclock = rate;
-	inno->tmdsclock = tmdsclock;
 
 	return 0;
 }
