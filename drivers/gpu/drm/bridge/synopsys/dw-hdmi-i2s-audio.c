@@ -63,20 +63,7 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	hdmi_write(audio, HDMI_AUD_CONF0_SW_RESET, HDMI_AUD_CONF0);
 	hdmi_write(audio, (u8)~HDMI_MC_SWRSTZ_I2SSWRST_REQ, HDMI_MC_SWRSTZ);
 
-	switch (hparms->sample_width) {
-	case 16:
-		conf1 = HDMI_AUD_CONF1_WIDTH_16;
-		break;
-	case 24:
-	case 32:
-		conf1 = HDMI_AUD_CONF1_WIDTH_24;
-		break;
-	default:
-		dev_err(dev, "unsupported sample width [%d]\n", hparms->sample_width);
-		return -EINVAL;
-	}
-	inputclkfs = HDMI_AUD_INPUTCLKFS_128FS;
-
+	inputclkfs	= HDMI_AUD_INPUTCLKFS_128FS;
 	conf0		= (HDMI_AUD_CONF0_I2S_SELECT | HDMI_AUD_CONF0_I2S_EN0);
 
 	/* Enable the required i2s lanes */
@@ -90,6 +77,19 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	case 3 ... 4:
 		conf0 |= HDMI_AUD_CONF0_I2S_EN1;
 		/* Fall-thru */
+	}
+
+	switch (hparms->sample_width) {
+	case 16:
+		conf1 = HDMI_AUD_CONF1_WIDTH_16;
+		break;
+	case 24:
+	case 32:
+		conf1 = HDMI_AUD_CONF1_WIDTH_24;
+		break;
+	default:
+		dev_err(dev, "unsupported sample width [%d]\n", hparms->sample_width);
+		return -EINVAL;
 	}
 
 	/*
