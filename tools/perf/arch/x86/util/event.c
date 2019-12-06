@@ -3,6 +3,8 @@
 #include <linux/string.h>
 #include <linux/zalloc.h>
 
+#include "../../util/event.h"
+#include "../../util/synthetic-events.h"
 #include "../../util/machine.h"
 #include "../../util/tool.h"
 #include "../../util/map.h"
@@ -27,7 +29,7 @@ int perf_event__synthesize_extra_kmaps(struct perf_tool *tool,
 		return -1;
 	}
 
-	for (pos = maps__first(maps); pos; pos = map__next(pos)) {
+	maps__for_each_entry(maps, pos) {
 		struct kmap *kmap;
 		size_t size;
 

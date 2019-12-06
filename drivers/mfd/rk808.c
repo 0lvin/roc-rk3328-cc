@@ -23,6 +23,11 @@
 #include <linux/regmap.h>
 #include <linux/syscore_ops.h>
 
+#define RK818_ON_SOURCE_REG            0xae
+#define RK818_OFF_SOURCE_REG           0xaf
+#define RK805_DCDC_VRP_REG             0x92
+#define BUCK4_VRP_3PERCENT             0xc0
+
 struct rk808_reg_data {
 	int addr;
 	int mask;

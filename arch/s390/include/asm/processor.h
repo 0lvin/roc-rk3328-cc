@@ -206,7 +206,7 @@ unsigned long get_wchan(struct task_struct *p);
 /* Has task runtime instrumentation enabled ? */
 #define is_ri_task(tsk) (!!(tsk)->thread.ri_cb)
 
-static inline unsigned long current_stack_pointer(void)
+static __always_inline unsigned long current_stack_pointer(void)
 {
 	unsigned long sp;
 
@@ -324,11 +324,9 @@ static inline void __noreturn disabled_wait(void)
  * Basic Machine Check/Program Check Handler.
  */
 
-extern void s390_base_mcck_handler(void);
 extern void s390_base_pgm_handler(void);
 extern void s390_base_ext_handler(void);
 
-extern void (*s390_base_mcck_handler_fn)(void);
 extern void (*s390_base_pgm_handler_fn)(void);
 extern void (*s390_base_ext_handler_fn)(void);
 
