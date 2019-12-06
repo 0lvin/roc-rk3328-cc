@@ -862,6 +862,23 @@ static const struct vop_data rk3228_vop = {
 	.win_size = ARRAY_SIZE(rk3228_vop_win_data),
 };
 
+static const int rk3328_vop_intrs[] = {
+	FS_INTR,
+	FS_NEW_INTR,
+	ADDR_SAME_INTR,
+	LINE_FLAG_INTR,
+	LINE_FLAG1_INTR,
+	BUS_ERROR_INTR,
+	WIN0_EMPTY_INTR,
+	WIN1_EMPTY_INTR,
+	WIN2_EMPTY_INTR,
+	WIN3_EMPTY_INTR,
+	HWC_EMPTY_INTR,
+	POST_BUF_EMPTY_INTR,
+	PWM_GEN_INTR,
+	DSP_HOLD_VALID_INTR,
+};
+
 static const struct vop_modeset rk3328_modeset = {
 	.htotal_pw = VOP_REG(RK3328_DSP_HTOTAL_HS_END, 0x1fff1fff, 0),
 	.hact_st_end = VOP_REG(RK3328_DSP_HACT_ST_END, 0x1fff1fff, 0),
@@ -876,10 +893,10 @@ static const struct vop_output rk3328_output = {
 	.hdmi_en = VOP_REG(RK3328_SYS_CTRL, 0x1, 13),
 	.edp_en = VOP_REG(RK3328_SYS_CTRL, 0x1, 14),
 	.mipi_en = VOP_REG(RK3328_SYS_CTRL, 0x1, 15),
-	.rgb_pin_pol = VOP_REG(RK3328_DSP_CTRL1, 0xf, 16),
-	.hdmi_pin_pol = VOP_REG(RK3328_DSP_CTRL1, 0xf, 20),
-	.edp_pin_pol = VOP_REG(RK3328_DSP_CTRL1, 0xf, 24),
-	.mipi_pin_pol = VOP_REG(RK3328_DSP_CTRL1, 0xf, 28),
+	.rgb_pin_pol = VOP_REG(RK3328_DSP_CTRL1, 0x7, 16),
+	.hdmi_pin_pol = VOP_REG(RK3328_DSP_CTRL1, 0x7, 20),
+	.edp_pin_pol = VOP_REG(RK3328_DSP_CTRL1, 0x7, 24),
+	.mipi_pin_pol = VOP_REG(RK3328_DSP_CTRL1, 0x7, 28),
 };
 
 static const struct vop_misc rk3328_misc = {
@@ -899,8 +916,8 @@ static const struct vop_common rk3328_common = {
 };
 
 static const struct vop_intr rk3328_vop_intr = {
-	.intrs = rk3368_vop_intrs,
-	.nintrs = ARRAY_SIZE(rk3368_vop_intrs),
+	.intrs = rk3328_vop_intrs,
+	.nintrs = ARRAY_SIZE(rk3328_vop_intrs),
 	.line_flag_num[0] = VOP_REG(RK3328_LINE_FLAG, 0xffff, 0),
 	.line_flag_num[1] = VOP_REG(RK3328_LINE_FLAG, 0xffff, 16),
 	.status = VOP_REG_MASK_SYNC(RK3328_INTR_STATUS0, 0xffff, 0),
@@ -908,13 +925,37 @@ static const struct vop_intr rk3328_vop_intr = {
 	.clear = VOP_REG_MASK_SYNC(RK3328_INTR_CLEAR0, 0xffff, 0),
 };
 
+static const struct vop_csc rk3328_win0_csc = {
+	.r2y_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 8),
+	.r2r_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 5),
+	.y2r_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 9),
+};
+
+static const struct vop_csc rk3328_win1_csc = {
+	.r2y_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 10),
+	.r2r_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 1),
+	.y2r_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 11),
+};
+
+static const struct vop_csc rk3328_win2_csc = {
+	.r2y_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 12),
+	.r2r_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 1),
+	.y2r_en = VOP_REG(RK3328_SDR2HDR_CTRL, 0x1, 13),
+};
+
 static const struct vop_win_data rk3328_vop_win_data[] = {
 	{ .base = 0xd0, .phy = &rk3368_win01_data,
-	  .type = DRM_PLANE_TYPE_PRIMARY },
+	  .csc = &rk3328_win0_csc,
+	  .type = DRM_PLANE_TYPE_PRIMARY,
+	  .feature = WIN_FEATURE_HDR2SDR | WIN_FEATURE_SDR2HDR },
 	{ .base = 0x1d0, .phy = &rk3368_win01_data,
-	  .type = DRM_PLANE_TYPE_OVERLAY },
+	   .csc = &rk3328_win1_csc,
+	  .type = DRM_PLANE_TYPE_OVERLAY,
+	  .feature = WIN_FEATURE_SDR2HDR | WIN_FEATURE_PRE_OVERLAY },
 	{ .base = 0x2d0, .phy = &rk3368_win01_data,
-	  .type = DRM_PLANE_TYPE_CURSOR },
+	  .csc = &rk3328_win2_csc,
+	  .type = DRM_PLANE_TYPE_CURSOR,
+	  .feature = WIN_FEATURE_SDR2HDR | WIN_FEATURE_PRE_OVERLAY },
 };
 
 static const struct vop_data rk3328_vop = {
