@@ -1904,67 +1904,36 @@ static void hdmi_config_vendor_specific_infoframe(struct dw_hdmi *hdmi,
 			HDMI_FC_DATAUTO0_VSD_MASK);
 }
 
-#define HDR_LSB(n) ((n) & 0xff)
-#define HDR_MSB(n) (((n) & 0xff00) >> 8)
-
-/* Set Dynamic Range and Mastering Infoframe */
 static void hdmi_config_drm_infoframe(struct dw_hdmi *hdmi)
 {
+	const struct drm_connector_state *conn_state = hdmi->connector.state;
 	struct hdmi_drm_infoframe frame;
+	u8 buffer[30];
+	ssize_t err;
+	int i;
 
-	/* Dynamic Range and Mastering Infoframe is introduced in v2.11a. */
-	if (hdmi->version < 0x211a) {
-		DRM_ERROR("Not support DRM Infoframe\n");
+	if (!hdmi->plat_data->use_drm_infoframe)
 		return;
-	}
 
 	hdmi_modb(hdmi, HDMI_FC_PACKET_TX_EN_DRM_DISABLE,
 		  HDMI_FC_PACKET_TX_EN_DRM_MASK, HDMI_FC_PACKET_TX_EN);
 
-	hdmi_writeb(hdmi, 1, HDMI_FC_DRM_HB0);
+	err = drm_hdmi_infoframe_set_hdr_metadata(&frame, conn_state);
+	if (err < 0)
+		return;
+
+	err = hdmi_drm_infoframe_pack(&frame, buffer, sizeof(buffer));
+	if (err < 0) {
+		dev_err(hdmi->dev, "Failed to pack drm infoframe: %zd\n", err);
+		return;
+	}
+
+	hdmi_writeb(hdmi, frame.version, HDMI_FC_DRM_HB0);
 	hdmi_writeb(hdmi, frame.length, HDMI_FC_DRM_HB1);
-	hdmi_writeb(hdmi, frame.eotf, HDMI_FC_DRM_PB0);
-	hdmi_writeb(hdmi, frame.metadata_type, HDMI_FC_DRM_PB1);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[0].x),
-		    HDMI_FC_DRM_PB2);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[0].x),
-		    HDMI_FC_DRM_PB3);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[0].y),
-		    HDMI_FC_DRM_PB4);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[0].y),
-		    HDMI_FC_DRM_PB5);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[1].x),
-		    HDMI_FC_DRM_PB6);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[1].x),
-		    HDMI_FC_DRM_PB7);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[1].y),
-		    HDMI_FC_DRM_PB8);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[1].y),
-		    HDMI_FC_DRM_PB9);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[2].x),
-		    HDMI_FC_DRM_PB10);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[2].x),
-		    HDMI_FC_DRM_PB11);
-	hdmi_writeb(hdmi, HDR_LSB(frame.display_primaries[2].y),
-		    HDMI_FC_DRM_PB12);
-	hdmi_writeb(hdmi, HDR_MSB(frame.display_primaries[2].y),
-		    HDMI_FC_DRM_PB13);
-	hdmi_writeb(hdmi, HDR_LSB(frame.white_point.x), HDMI_FC_DRM_PB14);
-	hdmi_writeb(hdmi, HDR_MSB(frame.white_point.x), HDMI_FC_DRM_PB15);
-	hdmi_writeb(hdmi, HDR_LSB(frame.white_point.y), HDMI_FC_DRM_PB16);
-	hdmi_writeb(hdmi, HDR_MSB(frame.white_point.y), HDMI_FC_DRM_PB17);
-	hdmi_writeb(hdmi, HDR_LSB(frame.max_display_mastering_luminance),
-		    HDMI_FC_DRM_PB18);
-	hdmi_writeb(hdmi, HDR_MSB(frame.max_display_mastering_luminance),
-		    HDMI_FC_DRM_PB19);
-	hdmi_writeb(hdmi, HDR_LSB(frame.min_display_mastering_luminance),
-		    HDMI_FC_DRM_PB20);
-	hdmi_writeb(hdmi, HDR_MSB(frame.min_display_mastering_luminance),
-		    HDMI_FC_DRM_PB21);
-	hdmi_writeb(hdmi, HDR_LSB(frame.max_cll), HDMI_FC_DRM_PB22);
-	hdmi_writeb(hdmi, HDR_MSB(frame.max_cll), HDMI_FC_DRM_PB23);
-	hdmi_writeb(hdmi, HDR_LSB(frame.max_fall), HDMI_FC_DRM_PB24);
-	hdmi_writeb(hdmi, HDR_MSB(frame.max_fall), HDMI_FC_DRM_PB25);
+
+	for (i = 0; i < frame.length; i++)
+		hdmi_writeb(hdmi, buffer[4 + i], HDMI_FC_DRM_PB0 + i);
+
 	hdmi_writeb(hdmi, 1, HDMI_FC_DRM_UP);
 	hdmi_modb(hdmi, HDMI_FC_PACKET_TX_EN_DRM_ENABLE,
 		  HDMI_FC_PACKET_TX_EN_DRM_MASK, HDMI_FC_PACKET_TX_EN);
@@ -2636,76 +2605,6 @@ static const struct drm_connector_helper_funcs dw_hdmi_connector_helper_funcs = 
 	.atomic_check = dw_hdmi_connector_atomic_check,
 };
 
-static void dw_hdmi_attatch_properties(struct dw_hdmi *hdmi)
-{
-	unsigned int color = MEDIA_BUS_FMT_RGB888_1X24;
-	int video_mapping, colorspace;
-	enum drm_connector_status connect_status =
-		hdmi->phy.ops->read_hpd(hdmi, hdmi->phy.data);
-	const struct dw_hdmi_property_ops *ops =
-				hdmi->plat_data->property_ops;
-
-	if (connect_status == connector_status_connected) {
-		video_mapping = (hdmi_readb(hdmi, HDMI_TX_INVID0) &
-				  HDMI_TX_INVID0_VIDEO_MAPPING_MASK);
-		colorspace = (hdmi_readb(hdmi, HDMI_FC_AVICONF0) &
-			      HDMI_FC_AVICONF0_PIX_FMT_MASK);
-		switch (video_mapping) {
-		case 0x01:
-			color = MEDIA_BUS_FMT_RGB888_1X24;
-			break;
-		case 0x03:
-			color = MEDIA_BUS_FMT_RGB101010_1X30;
-			break;
-		case 0x09:
-			if (colorspace == HDMI_COLORSPACE_YUV420)
-				color = MEDIA_BUS_FMT_UYYVYY8_0_5X24;
-			else if (colorspace == HDMI_COLORSPACE_YUV422)
-				color = MEDIA_BUS_FMT_UYVY8_1X16;
-			else
-				color = MEDIA_BUS_FMT_YUV8_1X24;
-			break;
-		case 0x0b:
-			if (colorspace == HDMI_COLORSPACE_YUV420)
-				color = MEDIA_BUS_FMT_UYYVYY10_0_5X30;
-			else if (colorspace == HDMI_COLORSPACE_YUV422)
-				color = MEDIA_BUS_FMT_UYVY10_1X20;
-			else
-				color = MEDIA_BUS_FMT_YUV10_1X30;
-			break;
-		case 0x14:
-			color = MEDIA_BUS_FMT_UYVY10_1X20;
-			break;
-		case 0x16:
-			color = MEDIA_BUS_FMT_UYVY8_1X16;
-			break;
-		default:
-			color = MEDIA_BUS_FMT_RGB888_1X24;
-			dev_err(hdmi->dev, "unexpected mapping: 0x%x\n",
-				video_mapping);
-		}
-
-		hdmi->hdmi_data.enc_in_bus_format = color;
-		hdmi->hdmi_data.enc_out_bus_format = color;
-		/*
-		 * input format will be set as yuv444 when output
-		 * format is yuv420
-		 */
-		if (color == MEDIA_BUS_FMT_UYVY10_1X20)
-			hdmi->hdmi_data.enc_in_bus_format =
-				MEDIA_BUS_FMT_YUV10_1X30;
-		else if (color == MEDIA_BUS_FMT_UYVY8_1X16)
-			hdmi->hdmi_data.enc_in_bus_format =
-				MEDIA_BUS_FMT_YUV8_1X24;
-
-	}
-
-	if (ops && ops->attatch_properties)
-		return ops->attatch_properties(&hdmi->connector,
-					       color, hdmi->version,
-					       hdmi->plat_data->phy_data);
-}
-
 static int dw_hdmi_bridge_attach(struct drm_bridge *bridge)
 {
 	struct dw_hdmi *hdmi = bridge->driver_private;
@@ -2730,8 +2629,6 @@ static int dw_hdmi_bridge_attach(struct drm_bridge *bridge)
 			connector->dev->mode_config.hdr_output_metadata_property, 0);
 
 	drm_connector_attach_encoder(connector, encoder);
-
-	dw_hdmi_attatch_properties(hdmi);
 
 	cec_fill_conn_info_from_drm(&conn_info, connector);
 
