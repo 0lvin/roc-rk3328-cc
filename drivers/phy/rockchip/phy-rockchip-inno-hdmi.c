@@ -475,21 +475,23 @@ static irqreturn_t inno_hdmi_phy_rk3328_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int inno_hdmi_phy_rk3328_clk_set_rate(struct clk_hw *hw, unsigned long rate,
-				      unsigned long parent_rate);
-
 static int inno_hdmi_phy_power_on(struct phy *phy)
 {
 	struct inno_hdmi_phy *inno = phy_get_drvdata(phy);
 	const struct post_pll_config *cfg = post_pll_cfg_table;
 	const struct phy_config *phy_cfg = inno->plat_data->phy_cfg_table;
-	u32 tmdsclock = inno_hdmi_phy_get_tmdsclk(inno, inno->pixclock);
+	unsigned long tmdsclock = inno_hdmi_phy_get_tmdsclk(inno,
+							    inno->pixclock);
+	int ret;
 	u32 chipversion = 1;
 
 	if (!tmdsclock) {
 		dev_err(inno->dev, "TMDS clock is zero!\n");
 		return -EINVAL;
 	}
+
+	if (!inno->plat_data->ops->power_on)
+		return -EINVAL;
 
 	if (inno->plat_data->dev_type == INNO_HDMI_PHY_RK3328 &&
 	    rockchip_get_cpu_version())
@@ -508,22 +510,28 @@ static int inno_hdmi_phy_power_on(struct phy *phy)
 		return -EINVAL;
 
 	dev_dbg(inno->dev, "Inno HDMI PHY Power On\n");
-	inno_hdmi_phy_rk3328_clk_set_rate(&inno->hw, inno->pixclock, 0);
+	inno->plat_data->clk_ops->set_rate(&inno->hw, inno->pixclock, 0);
 
-	if (inno->plat_data->ops->power_on)
-		return inno->plat_data->ops->power_on(inno, cfg, phy_cfg);
-	else
-		return -EINVAL;
+	ret = inno->plat_data->ops->power_on(inno, cfg, phy_cfg);
+	if (ret)
+	{
+		return ret;
+	}
+
+	return 0;
 }
 
 static int inno_hdmi_phy_power_off(struct phy *phy)
 {
 	struct inno_hdmi_phy *inno = phy_get_drvdata(phy);
 
-	if (inno->plat_data->ops->power_off)
-		inno->plat_data->ops->power_off(inno);
+	if (!inno->plat_data->ops->power_off)
+		return -EINVAL;
+
+	inno->plat_data->ops->power_off(inno);
 
 	inno->tmdsclock = 0;
+
 	dev_dbg(inno->dev, "Inno HDMI PHY Power Off\n");
 
 	return 0;
@@ -980,6 +988,10 @@ static void inno_hdmi_phy_rk3328_power_off(struct inno_hdmi_phy *inno);
 
 static int inno_hdmi_phy_rk3328_init(struct inno_hdmi_phy *inno)
 {
+	struct nvmem_cell *cell;
+	unsigned char *efuse_buf;
+	size_t len;
+
 	/*
 	 * Use phy internal register control
 	 * rxsense/poweron/pllpd/pdataen signal.
@@ -998,6 +1010,25 @@ static int inno_hdmi_phy_rk3328_init(struct inno_hdmi_phy *inno)
 		/* manual power down post-PLL */
 		inno_hdmi_phy_rk3328_power_off(inno);
 	}
+
+	/* try to read the chip-version */
+	inno->chip_version = 1;
+	cell = nvmem_cell_get(inno->dev, "cpu-version");
+	if (IS_ERR(cell)) {
+		if (PTR_ERR(cell) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+
+		return 0;
+	}
+
+	efuse_buf = nvmem_cell_read(cell, &len);
+	nvmem_cell_put(cell);
+
+	if (IS_ERR(efuse_buf))
+		return 0;
+	if (len == 1)
+		inno->chip_version = efuse_buf[0] + 1;
+	kfree(efuse_buf);
 
 	return 0;
 }
