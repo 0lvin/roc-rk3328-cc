@@ -189,14 +189,13 @@ static const struct mfd_cell rk805s[] = {
 	{ .name = "rk818-regulator", },
 	{ .name = "rk8xx-gpio", },
 	{
-		.name = "rk8xx-pwrkey",
-		.num_resources = ARRAY_SIZE(rk805_key_resources),
-		.resources = &rk805_key_resources[0],
-	},
-	{
 		.name = "rk808-rtc",
 		.num_resources = ARRAY_SIZE(rtc_resources),
 		.resources = &rtc_resources[0],
+	},
+	{	.name = "rk8xx-pwrkey",
+		.num_resources = ARRAY_SIZE(rk805_key_resources),
+		.resources = &rk805_key_resources[0],
 	},
 };
 
@@ -228,12 +227,10 @@ static const struct mfd_cell rk817s[] = {
 static const struct mfd_cell rk818s[] = {
 	{ .name = "rk808-clkout", },
 	{ .name = "rk808-regulator", },
-	{ .name = "rk818-battery", .of_compatible = "rk818-battery", },
-	{ .name = "rk818-charger", },
 	{
 		.name = "rk808-rtc",
 		.num_resources = ARRAY_SIZE(rtc_resources),
-		.resources = &rtc_resources[0],
+		.resources = rtc_resources,
 	},
 };
 
@@ -582,54 +579,6 @@ static struct syscore_ops rk808_syscore_ops = {
 	.shutdown = rk808_syscore_shutdown,
 };
 
-static ssize_t rk8xx_dbg_store(struct device *dev,
-			       struct device_attribute *attr,
-			       const char *buf, size_t count)
-{
-	int ret;
-	char cmd;
-	u32 input[2], addr, data;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	ret = sscanf(buf, "%c ", &cmd);
-	switch (cmd) {
-	case 'w':
-		ret = sscanf(buf, "%c %x %x ", &cmd, &input[0], &input[1]);
-		if (ret != 3) {
-			pr_err("erro! cmd format: echo w [addr] [value]\n");
-			goto out;
-		}
-		addr = input[0] & 0xff;
-		data = input[1] & 0xff;
-		pr_info("cmd : %c %x %x\n\n", cmd, input[0], input[1]);
-		regmap_write(rk808->regmap, addr, data);
-		regmap_read(rk808->regmap, addr, &data);
-		pr_info("new: %x %x\n", addr, data);
-		break;
-	case 'r':
-		ret = sscanf(buf, "%c %x ", &cmd, &input[0]);
-		if (ret != 2) {
-			pr_err("erro! cmd format: echo r [addr]\n");
-			goto out;
-		}
-		pr_info("cmd : %c %x\n\n", cmd, input[0]);
-		addr = input[0] & 0xff;
-		regmap_read(rk808->regmap, addr, &data);
-		pr_info("%x %x\n", input[0], data);
-		break;
-	default:
-		pr_err("Unknown command\n");
-		break;
-	}
-
-out:
-	return count;
-}
-
-static struct kobject *rk8xx_kobj;
-static struct device_attribute rk8xx_attrs =
-		__ATTR(rk8xx_dbg, 0200, NULL, rk8xx_dbg_store);
-
 static const struct of_device_id rk808_of_match[] = {
 	{ .compatible = "rockchip,rk805" },
 	{ .compatible = "rockchip,rk808" },
@@ -645,16 +594,20 @@ static int rk808_probe(struct i2c_client *client,
 {
 	struct device_node *np = client->dev.of_node;
 	struct rk808 *rk808;
+	const struct rk808_reg_data *pre_init_reg;
+	const struct mfd_cell *cells;
 	int (*pm_shutdown_fn)(struct regmap *regmap) = NULL;
 	int (*pm_shutdown_prepare_fn)(struct regmap *regmap) = NULL;
-	const struct rk808_reg_data *pre_init_reg;
 	const struct regmap_config *regmap_config;
 	const struct regmap_irq_chip *irq_chip;
-	const struct mfd_cell *cell;
 	u8 on_source = 0, off_source = 0;
-	int msb, lsb, reg_num, cell_num;
-	int ret, i, pm_off = 0;
+	int reg_num;
 	unsigned int on, off;
+	int nr_cells;
+	int pm_off = 0, msb, lsb;
+	unsigned char pmic_id_msb, pmic_id_lsb;
+	int ret;
+	int i;
 
 	if (!client->irq) {
 		dev_err(&client->dev, "No interrupt support, no core IRQ\n");
@@ -665,15 +618,24 @@ static int rk808_probe(struct i2c_client *client,
 	if (!rk808)
 		return -ENOMEM;
 
+	if (of_device_is_compatible(np, "rockchip,rk817") ||
+	    of_device_is_compatible(np, "rockchip,rk809")) {
+		pmic_id_msb = RK817_ID_MSB;
+		pmic_id_lsb = RK817_ID_LSB;
+	} else {
+		pmic_id_msb = RK808_ID_MSB;
+		pmic_id_lsb = RK808_ID_LSB;
+	}
+
 	/* Read chip variant */
-	msb = i2c_smbus_read_byte_data(client, RK808_ID_MSB);
+	msb = i2c_smbus_read_byte_data(client, pmic_id_msb);
 	if (msb < 0) {
 		dev_err(&client->dev, "failed to read the chip id at 0x%x\n",
 			RK808_ID_MSB);
 		return msb;
 	}
 
-	lsb = i2c_smbus_read_byte_data(client, RK808_ID_LSB);
+	lsb = i2c_smbus_read_byte_data(client, pmic_id_lsb);
 	if (lsb < 0) {
 		dev_err(&client->dev, "failed to read the chip id at 0x%x\n",
 			RK808_ID_LSB);
@@ -685,9 +647,9 @@ static int rk808_probe(struct i2c_client *client,
 
 	switch (rk808->variant) {
 	case RK805_ID:
-		cell = rk805s;
-		cell_num = ARRAY_SIZE(rk805s);
 		pre_init_reg = rk805_pre_init_reg;
+		cells = rk805s;
+		nr_cells = ARRAY_SIZE(rk805s);
 		reg_num = ARRAY_SIZE(rk805_pre_init_reg);
 		regmap_config = &rk805_regmap_config;
 		irq_chip = &rk805_irq_chip;
@@ -700,18 +662,18 @@ static int rk808_probe(struct i2c_client *client,
 		resume_reg_num = ARRAY_SIZE(rk805_resume_reg);
 		break;
 	case RK808_ID:
-		cell = rk808s;
-		cell_num = ARRAY_SIZE(rk808s);
 		pre_init_reg = rk808_pre_init_reg;
+		cells = rk808s;
+		nr_cells = ARRAY_SIZE(rk808s);
 		reg_num = ARRAY_SIZE(rk808_pre_init_reg);
 		regmap_config = &rk808_regmap_config;
 		irq_chip = &rk808_irq_chip;
 		pm_shutdown_fn = rk808_shutdown;
 		break;
 	case RK818_ID:
-		cell = rk818s;
-		cell_num = ARRAY_SIZE(rk818s);
 		pre_init_reg = rk818_pre_init_reg;
+		cells = rk818s;
+		nr_cells = ARRAY_SIZE(rk818s);
 		reg_num = ARRAY_SIZE(rk818_pre_init_reg);
 		regmap_config = &rk818_regmap_config;
 		irq_chip = &rk818_irq_chip;
@@ -725,9 +687,9 @@ static int rk808_probe(struct i2c_client *client,
 		break;
 	case RK809_ID:
 	case RK817_ID:
-		cell = rk817s;
-		cell_num = ARRAY_SIZE(rk817s);
 		pre_init_reg = rk817_pre_init_reg;
+		cells = rk817s;
+		nr_cells = ARRAY_SIZE(rk817s);
 		reg_num = ARRAY_SIZE(rk817_pre_init_reg);
 		regmap_config = &rk817_regmap_config;
 		irq_chip = &rk817_irq_chip;
@@ -764,9 +726,9 @@ static int rk808_probe(struct i2c_client *client,
 
 	for (i = 0; i < reg_num; i++) {
 		ret = regmap_update_bits(rk808->regmap,
-					 pre_init_reg[i].addr,
-					 pre_init_reg[i].mask,
-					 pre_init_reg[i].value);
+					pre_init_reg[i].addr,
+					pre_init_reg[i].mask,
+					pre_init_reg[i].value);
 		if (ret) {
 			dev_err(&client->dev,
 				"0x%x write err\n",
@@ -788,7 +750,7 @@ static int rk808_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, rk808);
 
 	ret = devm_mfd_add_devices(&client->dev, -1,
-			      cell, cell_num, NULL, 0,
+			      cells, nr_cells, NULL, 0,
 			      regmap_irq_get_domain(rk808->irq_data));
 	if (ret) {
 		dev_err(&client->dev, "failed to add MFD devices %d\n", ret);
@@ -806,13 +768,6 @@ static int rk808_probe(struct i2c_client *client,
 			pm_shutdown = pm_shutdown_fn;
 			register_syscore_ops(&rk808_syscore_ops);
 		}
-	}
-
-	rk8xx_kobj = kobject_create_and_add("rk8xx", NULL);
-	if (rk8xx_kobj) {
-		ret = sysfs_create_file(rk8xx_kobj, &rk8xx_attrs.attr);
-		if (ret)
-			dev_err(&client->dev, "create rk8xx sysfs error\n");
 	}
 
 	return 0;
