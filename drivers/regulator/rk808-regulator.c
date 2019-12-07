@@ -1,19 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Regulator driver for Rockchip RK818
+ * Regulator driver for Rockchip RK805/RK808/RK818
  *
- * Copyright (c) 2016, Fuzhou Rockchip Electronics Co., Ltd
+ * Copyright (c) 2014, Fuzhou Rockchip Electronics Co., Ltd
  *
- * Author: xsf <xsf@rock-chips.com>
+ * Author: Chris Zhong <zyw@rock-chips.com>
  * Author: Zhang Qing <zhangqing@rock-chips.com>
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
+ * Copyright (C) 2016 PHYTEC Messtechnik GmbH
  *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
+ * Author: Wadim Egorov <w.egorov@phytec.de>
  */
 
 #include <linux/delay.h>
@@ -28,32 +24,41 @@
 #include <linux/gpio/consumer.h>
 
 /* Field Definitions */
-#define RK818_BUCK_VSEL_MASK	0x3f
-#define RK818_BUCK4_VSEL_MASK	0x1f
-#define RK818_LDO_VSEL_MASK	0x1f
-#define RK818_LDO3_VSEL_MASK	0x0f
+#define RK808_BUCK_VSEL_MASK	0x3f
+#define RK808_BUCK4_VSEL_MASK	0xf
+#define RK808_LDO_VSEL_MASK	0x1f
+
+#define RK809_BUCK5_VSEL_MASK		0x7
+
+#define RK817_LDO_VSEL_MASK		0x7f
+#define RK817_BOOST_VSEL_MASK		0x7
+#define RK817_BUCK_VSEL_MASK		0x7f
+
+#define RK818_BUCK_VSEL_MASK		0x3f
+#define RK818_BUCK4_VSEL_MASK		0x1f
+#define RK818_LDO_VSEL_MASK		0x1f
+#define RK818_LDO3_ON_VSEL_MASK		0xf
 #define RK818_BOOST_ON_VSEL_MASK	0xe0
 
 /* Ramp rate definitions for buck1 / buck2 only */
-#define RK818_RAMP_RATE_OFFSET		3
-#define RK818_RAMP_RATE_MASK		(3 << RK818_RAMP_RATE_OFFSET)
-#define RK818_RAMP_RATE_2MV_PER_US	(0 << RK818_RAMP_RATE_OFFSET)
-#define RK818_RAMP_RATE_4MV_PER_US	(1 << RK818_RAMP_RATE_OFFSET)
-#define RK818_RAMP_RATE_6MV_PER_US	(2 << RK818_RAMP_RATE_OFFSET)
-#define RK818_RAMP_RATE_10MV_PER_US	(3 << RK818_RAMP_RATE_OFFSET)
+#define RK808_RAMP_RATE_OFFSET		3
+#define RK808_RAMP_RATE_MASK		(3 << RK808_RAMP_RATE_OFFSET)
+#define RK808_RAMP_RATE_2MV_PER_US	(0 << RK808_RAMP_RATE_OFFSET)
+#define RK808_RAMP_RATE_4MV_PER_US	(1 << RK808_RAMP_RATE_OFFSET)
+#define RK808_RAMP_RATE_6MV_PER_US	(2 << RK808_RAMP_RATE_OFFSET)
+#define RK808_RAMP_RATE_10MV_PER_US	(3 << RK808_RAMP_RATE_OFFSET)
 
-#define RK805_RAMP_RATE_OFFSET		3
-#define RK805_RAMP_RATE_MASK		(3 << RK805_RAMP_RATE_OFFSET)
-#define RK805_RAMP_RATE_3MV_PER_US	(0 << RK805_RAMP_RATE_OFFSET)
-#define RK805_RAMP_RATE_6MV_PER_US	(1 << RK805_RAMP_RATE_OFFSET)
-#define RK805_RAMP_RATE_12_5MV_PER_US	(2 << RK805_RAMP_RATE_OFFSET)
-#define RK805_RAMP_RATE_25MV_PER_US	(3 << RK805_RAMP_RATE_OFFSET)
+#define RK808_DVS2_POL		BIT(2)
+#define RK808_DVS1_POL		BIT(1)
 
 /* Offset from XXX_ON_VSEL to XXX_SLP_VSEL */
-#define RK818_SLP_REG_OFFSET 1
+#define RK808_SLP_REG_OFFSET 1
+
+/* Offset from XXX_ON_VSEL to XXX_DVS_VSEL */
+#define RK808_DVS_REG_OFFSET 2
 
 /* Offset from XXX_EN_REG to SLEEP_SET_OFF_XXX */
-#define RK818_SLP_SET_OFF_REG_OFFSET 2
+#define RK808_SLP_SET_OFF_REG_OFFSET 2
 
 #define RK805_SLP_LDO_EN_OFFSET		-1
 #define RK805_SLP_DCDC_EN_OFFSET	2
@@ -61,16 +66,16 @@
 /* max steps for increase voltage of Buck1/2, equal 100mv*/
 #define MAX_STEPS_ONE_TIME 8
 
-static const int rk818_buck_config_regs[] = {
+#define ENABLE_MASK(id)			(BIT(id) | BIT(4 + (id)))
+#define DISABLE_VAL(id)			(BIT(4 + (id)))
+
+static const int rk808_buck_config_regs[] = {
 	RK818_BUCK1_CONFIG_REG,
 	RK818_BUCK2_CONFIG_REG,
 	RK818_BUCK3_CONFIG_REG,
 	RK818_BUCK4_CONFIG_REG,
 };
 
-/* rk805 */
-#define ENABLE_MASK(id)	(BIT(id) | BIT(4 + (id)))
-#define DISABLE_VAL(id)	(BIT(4 + (id)))
 
 static const struct regulator_linear_range rk805_buck_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),	/* 0.7125v - 1.45v */
@@ -116,21 +121,21 @@ static const struct regulator_linear_range rk818_boost_voltage_ranges[] = {
 static int rk818_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 {
 	struct rk808 *rk818 = rdev->reg_data;
-	unsigned int ramp_value = RK818_RAMP_RATE_10MV_PER_US;
-	unsigned int reg = rk818_buck_config_regs[rdev->desc->id -
+	unsigned int ramp_value = RK808_RAMP_RATE_10MV_PER_US;
+	unsigned int reg = rk808_buck_config_regs[rdev->desc->id -
 						  RK818_ID_DCDC1];
 
 	switch (rk818->variant) {
 	case RK818_ID:
 		switch (ramp_delay) {
 		case 1 ... 2000:
-			ramp_value = RK818_RAMP_RATE_2MV_PER_US;
+			ramp_value = RK808_RAMP_RATE_2MV_PER_US;
 			break;
 		case 2001 ... 4000:
-			ramp_value = RK818_RAMP_RATE_4MV_PER_US;
+			ramp_value = RK808_RAMP_RATE_4MV_PER_US;
 			break;
 		case 4001 ... 6000:
-			ramp_value = RK818_RAMP_RATE_6MV_PER_US;
+			ramp_value = RK808_RAMP_RATE_4MV_PER_US;
 			break;
 		case 6001 ... 10000:
 			break;
@@ -142,16 +147,16 @@ static int rk818_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 	case RK805_ID:
 		switch (ramp_delay) {
 		case 3000:
-			ramp_value = RK805_RAMP_RATE_3MV_PER_US;
+			ramp_value = RK808_RAMP_RATE_2MV_PER_US;
 			break;
 		case 6000:
-			ramp_value = RK805_RAMP_RATE_6MV_PER_US;
+			ramp_value = RK808_RAMP_RATE_4MV_PER_US;
 			break;
 		case 12500:
-			ramp_value = RK805_RAMP_RATE_12_5MV_PER_US;
+			ramp_value = RK808_RAMP_RATE_6MV_PER_US;
 			break;
 		case 25000:
-			ramp_value = RK805_RAMP_RATE_25MV_PER_US;
+			ramp_value = RK808_RAMP_RATE_10MV_PER_US;
 			break;
 		default:
 			pr_warn("%s ramp_delay: %d not supported\n",
@@ -165,7 +170,7 @@ static int rk818_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 	}
 
 	return regmap_update_bits(rdev->regmap, reg,
-				  RK818_RAMP_RATE_MASK, ramp_value);
+				  RK808_RAMP_RATE_MASK, ramp_value);
 }
 
 static int rk818_set_suspend_voltage(struct regulator_dev *rdev, int uv)
@@ -176,7 +181,7 @@ static int rk818_set_suspend_voltage(struct regulator_dev *rdev, int uv)
 	if (sel < 0)
 		return -EINVAL;
 
-	reg = rdev->desc->vsel_reg + RK818_SLP_REG_OFFSET;
+	reg = rdev->desc->vsel_reg + RK808_SLP_REG_OFFSET;
 
 	return regmap_update_bits(rdev->regmap, reg,
 				  rdev->desc->vsel_mask,
@@ -191,7 +196,7 @@ static int rk818_set_suspend_enable(struct regulator_dev *rdev)
 
 	switch (rk818->variant) {
 	case RK818_ID:
-		offset = RK818_SLP_SET_OFF_REG_OFFSET;
+		offset = RK808_SLP_SET_OFF_REG_OFFSET;
 		enable_val = 0;
 		break;
 	case RK805_ID:
@@ -221,7 +226,7 @@ static int rk818_set_suspend_disable(struct regulator_dev *rdev)
 
 	switch (rk818->variant) {
 	case RK818_ID:
-		offset = RK818_SLP_SET_OFF_REG_OFFSET;
+		offset = RK808_SLP_SET_OFF_REG_OFFSET;
 		disable_val = rdev->desc->enable_mask;
 		break;
 	case RK805_ID:
@@ -247,7 +252,7 @@ static int rk818_set_suspend_mode(struct regulator_dev *rdev, unsigned int mode)
 {
 	unsigned int reg;
 
-	reg = rdev->desc->vsel_reg + RK818_SLP_REG_OFFSET;
+	reg = rdev->desc->vsel_reg + RK808_SLP_REG_OFFSET;
 
 	switch (mode) {
 	case REGULATOR_MODE_FAST:
@@ -361,7 +366,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_buck_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_buck_voltage_ranges),
 		.vsel_reg = RK818_BUCK1_ON_VSEL_REG,
-		.vsel_mask = RK818_BUCK_VSEL_MASK,
+		.vsel_mask = RK808_BUCK_VSEL_MASK,
 		.enable_reg = RK818_DCDC_EN_REG,
 		.enable_mask = BIT(0),
 		.owner = THIS_MODULE,
@@ -375,7 +380,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_buck_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_buck_voltage_ranges),
 		.vsel_reg = RK818_BUCK2_ON_VSEL_REG,
-		.vsel_mask = RK818_BUCK_VSEL_MASK,
+		.vsel_mask = RK808_BUCK_VSEL_MASK,
 		.enable_reg = RK818_DCDC_EN_REG,
 		.enable_mask = BIT(1),
 		.owner = THIS_MODULE,
@@ -428,7 +433,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo_voltage_ranges),
 		.vsel_reg = RK818_LDO1_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK818_LDO_EN_REG,
 		.enable_mask = BIT(0),
 		.enable_time = 400,
@@ -443,7 +448,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo_voltage_ranges),
 		.vsel_reg = RK818_LDO2_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK818_LDO_EN_REG,
 		.enable_mask = BIT(1),
 		.enable_time = 400,
@@ -458,7 +463,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo3_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo3_voltage_ranges),
 		.vsel_reg = RK818_LDO3_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO3_VSEL_MASK,
+		.vsel_mask = RK818_LDO3_ON_VSEL_MASK,
 		.enable_reg = RK818_LDO_EN_REG,
 		.enable_mask = BIT(2),
 		.enable_time = 400,
@@ -473,7 +478,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo_voltage_ranges),
 		.vsel_reg = RK818_LDO4_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK818_LDO_EN_REG,
 		.enable_mask = BIT(3),
 		.enable_time = 400,
@@ -488,7 +493,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo_voltage_ranges),
 		.vsel_reg = RK818_LDO5_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK818_LDO_EN_REG,
 		.enable_mask = BIT(4),
 		.enable_time = 400,
@@ -503,7 +508,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo6_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo6_voltage_ranges),
 		.vsel_reg = RK818_LDO6_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK818_LDO_EN_REG,
 		.enable_mask = BIT(5),
 		.enable_time = 400,
@@ -518,7 +523,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo6_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo6_voltage_ranges),
 		.vsel_reg = RK818_LDO7_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK818_LDO_EN_REG,
 		.enable_mask = BIT(6),
 		.enable_time = 400,
@@ -533,7 +538,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo_voltage_ranges),
 		.vsel_reg =  RK818_LDO8_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK818_LDO_EN_REG,
 		.enable_mask = BIT(7),
 		.enable_time = 400,
@@ -548,7 +553,7 @@ static const struct regulator_desc rk818_desc[] = {
 		.linear_ranges = rk818_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk818_ldo_voltage_ranges),
 		.vsel_reg = RK818_BOOST_LDO9_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK818_DCDC_EN_REG,
 		.enable_mask = BIT(5),
 		.enable_time = 400,
@@ -594,7 +599,7 @@ static const struct regulator_desc rk805_desc[] = {
 		.linear_ranges = rk805_buck_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk805_buck_voltage_ranges),
 		.vsel_reg = RK805_BUCK1_ON_VSEL_REG,
-		.vsel_mask = RK818_BUCK_VSEL_MASK,
+		.vsel_mask = RK808_BUCK_VSEL_MASK,
 		.enable_reg = RK805_DCDC_EN_REG,
 		.enable_mask = ENABLE_MASK(0),
 		.disable_val = DISABLE_VAL(0),
@@ -610,7 +615,7 @@ static const struct regulator_desc rk805_desc[] = {
 		.linear_ranges = rk805_buck_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk805_buck_voltage_ranges),
 		.vsel_reg = RK805_BUCK2_ON_VSEL_REG,
-		.vsel_mask = RK818_BUCK_VSEL_MASK,
+		.vsel_mask = RK808_BUCK_VSEL_MASK,
 		.enable_reg = RK805_DCDC_EN_REG,
 		.enable_mask = ENABLE_MASK(1),
 		.disable_val = DISABLE_VAL(1),
@@ -654,7 +659,7 @@ static const struct regulator_desc rk805_desc[] = {
 		.linear_ranges = rk805_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk805_ldo_voltage_ranges),
 		.vsel_reg = RK805_LDO1_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK805_LDO_EN_REG,
 		.enable_mask = ENABLE_MASK(0),
 		.disable_val = DISABLE_VAL(0),
@@ -670,7 +675,7 @@ static const struct regulator_desc rk805_desc[] = {
 		.linear_ranges = rk805_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk805_ldo_voltage_ranges),
 		.vsel_reg = RK805_LDO2_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK805_LDO_EN_REG,
 		.enable_mask = ENABLE_MASK(1),
 		.disable_val = DISABLE_VAL(1),
@@ -686,7 +691,7 @@ static const struct regulator_desc rk805_desc[] = {
 		.linear_ranges = rk805_ldo_voltage_ranges,
 		.n_linear_ranges = ARRAY_SIZE(rk805_ldo_voltage_ranges),
 		.vsel_reg = RK805_LDO3_ON_VSEL_REG,
-		.vsel_mask = RK818_LDO_VSEL_MASK,
+		.vsel_mask = RK808_LDO_VSEL_MASK,
 		.enable_reg = RK805_LDO_EN_REG,
 		.enable_mask = ENABLE_MASK(2),
 		.disable_val = DISABLE_VAL(2),
@@ -736,12 +741,12 @@ static int rk818_regulator_dt_parse_pdata(struct device *dev,
 	return ret;
 }
 
-static int rk818_regulator_probe(struct platform_device *pdev)
+static int rk808_regulator_probe(struct platform_device *pdev)
 {
 	struct rk808 *rk818 = dev_get_drvdata(pdev->dev.parent);
 	struct i2c_client *client = rk818->i2c;
 	struct regulator_config config = {};
-	struct regulator_dev *rk818_rdev;
+	struct regulator_dev *rk808_rdev;
 	int ret, i, reg_nr;
 	const struct regulator_desc *reg_desc;
 	struct of_regulator_match *reg_matches;
@@ -780,35 +785,31 @@ static int rk818_regulator_probe(struct platform_device *pdev)
 		config.regmap = rk818->regmap;
 		config.of_node = reg_matches[i].of_node;
 		config.init_data = reg_matches[i].init_data;
-		rk818_rdev = devm_regulator_register(&pdev->dev,
-						     &reg_desc[i],
-						     &config);
-		if (IS_ERR(rk818_rdev)) {
+		rk808_rdev = devm_regulator_register(&pdev->dev,
+						     &reg_desc[i], &config);
+		if (IS_ERR(rk808_rdev)) {
 			dev_err(&client->dev,
 				"failed to register %d regulator\n", i);
-			return PTR_ERR(rk818_rdev);
+			return PTR_ERR(rk808_rdev);
 		}
 	}
-
-	dev_info(&client->dev, "register rk%lx regulators\n", rk818->variant);
 
 	return 0;
 }
 
-static struct platform_driver rk818_regulator_driver = {
-	.probe = rk818_regulator_probe,
+static struct platform_driver rk808_regulator_driver = {
+	.probe = rk808_regulator_probe,
 	.driver = {
-		.name = "rk808-regulator",
-		.owner = THIS_MODULE,
+		.name = "rk808-regulator"
 	},
 };
 
-module_platform_driver(rk818_regulator_driver);
+module_platform_driver(rk808_regulator_driver);
 
-MODULE_DESCRIPTION("regulator driver for the rk818 series PMICs");
-MODULE_AUTHOR("xsf<xsf@rock-chips.com>");
-MODULE_AUTHOR("Zhang Qing<zhangqing@rock-chips.com>");
-MODULE_AUTHOR("chen Jianhong<chenjh@rock-chips.com>");
+MODULE_DESCRIPTION("regulator driver for the RK805/RK808/RK818 series PMICs");
+MODULE_AUTHOR("Tony xie <tony.xie@rock-chips.com>");
+MODULE_AUTHOR("Chris Zhong <zyw@rock-chips.com>");
+MODULE_AUTHOR("Zhang Qing <zhangqing@rock-chips.com>");
+MODULE_AUTHOR("Wadim Egorov <w.egorov@phytec.de>");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:rk808-regulator");
-
