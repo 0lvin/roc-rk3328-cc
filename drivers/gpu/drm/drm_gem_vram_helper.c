@@ -58,6 +58,7 @@ static void drm_gem_vram_placement(struct drm_gem_vram_object *gbo,
 {
 	unsigned int i;
 	unsigned int c = 0;
+	u32 invariant_flags = pl_flag & TTM_PL_FLAG_TOPDOWN;
 
 	gbo->placement.placement = gbo->placements;
 	gbo->placement.busy_placement = gbo->placements;
@@ -65,15 +66,18 @@ static void drm_gem_vram_placement(struct drm_gem_vram_object *gbo,
 	if (pl_flag & TTM_PL_FLAG_VRAM)
 		gbo->placements[c++].flags = TTM_PL_FLAG_WC |
 					     TTM_PL_FLAG_UNCACHED |
-					     TTM_PL_FLAG_VRAM;
+					     TTM_PL_FLAG_VRAM |
+					     invariant_flags;
 
 	if (pl_flag & TTM_PL_FLAG_SYSTEM)
 		gbo->placements[c++].flags = TTM_PL_MASK_CACHING |
-					     TTM_PL_FLAG_SYSTEM;
+					     TTM_PL_FLAG_SYSTEM |
+					     invariant_flags;
 
 	if (!c)
 		gbo->placements[c++].flags = TTM_PL_MASK_CACHING |
-					     TTM_PL_FLAG_SYSTEM;
+					     TTM_PL_FLAG_SYSTEM |
+					     invariant_flags;
 
 	gbo->placement.num_placement = c;
 	gbo->placement.num_busy_placement = c;
@@ -238,6 +242,14 @@ out:
  * the buffer is pinned at its current location (video RAM or system
  * memory).
  *
+ * Small buffer objects, such as cursor images, can lead to memory
+ * fragmentation if they are pinned in the middle of video RAM. This
+ * is especially a problem on devices with only a small amount of
+ * video RAM. Fragmentation can prevent the primary framebuffer from
+ * fitting in, even though there's enough memory overall. The modifier
+ * DRM_GEM_VRAM_PL_FLAG_TOPDOWN marks the buffer object to be pinned
+ * at the high end of the memory region to avoid fragmentation.
+ *
  * Returns:
  * 0 on success, or
  * a negative error code otherwise.
@@ -391,6 +403,77 @@ void drm_gem_vram_kunmap(struct drm_gem_vram_object *gbo)
 	ttm_bo_unreserve(&gbo->bo);
 }
 EXPORT_SYMBOL(drm_gem_vram_kunmap);
+
+/**
+ * drm_gem_vram_vmap() - Pins and maps a GEM VRAM object into kernel address
+ *                       space
+ * @gbo:	The GEM VRAM object to map
+ *
+ * The vmap function pins a GEM VRAM object to its current location, either
+ * system or video memory, and maps its buffer into kernel address space.
+ * As pinned object cannot be relocated, you should avoid pinning objects
+ * permanently. Call drm_gem_vram_vunmap() with the returned address to
+ * unmap and unpin the GEM VRAM object.
+ *
+ * If you have special requirements for the pinning or mapping operations,
+ * call drm_gem_vram_pin() and drm_gem_vram_kmap() directly.
+ *
+ * Returns:
+ * The buffer's virtual address on success, or
+ * an ERR_PTR()-encoded error code otherwise.
+ */
+void *drm_gem_vram_vmap(struct drm_gem_vram_object *gbo)
+{
+	int ret;
+	void *base;
+
+	ret = ttm_bo_reserve(&gbo->bo, true, false, NULL);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = drm_gem_vram_pin_locked(gbo, 0);
+	if (ret)
+		goto err_ttm_bo_unreserve;
+	base = drm_gem_vram_kmap_locked(gbo, true, NULL);
+	if (IS_ERR(base)) {
+		ret = PTR_ERR(base);
+		goto err_drm_gem_vram_unpin_locked;
+	}
+
+	ttm_bo_unreserve(&gbo->bo);
+
+	return base;
+
+err_drm_gem_vram_unpin_locked:
+	drm_gem_vram_unpin_locked(gbo);
+err_ttm_bo_unreserve:
+	ttm_bo_unreserve(&gbo->bo);
+	return ERR_PTR(ret);
+}
+EXPORT_SYMBOL(drm_gem_vram_vmap);
+
+/**
+ * drm_gem_vram_vunmap() - Unmaps and unpins a GEM VRAM object
+ * @gbo:	The GEM VRAM object to unmap
+ * @vaddr:	The mapping's base address as returned by drm_gem_vram_vmap()
+ *
+ * A call to drm_gem_vram_vunmap() unmaps and unpins a GEM VRAM buffer. See
+ * the documentation for drm_gem_vram_vmap() for more information.
+ */
+void drm_gem_vram_vunmap(struct drm_gem_vram_object *gbo, void *vaddr)
+{
+	int ret;
+
+	ret = ttm_bo_reserve(&gbo->bo, false, false, NULL);
+	if (WARN_ONCE(ret, "ttm_bo_reserve_failed(): ret=%d\n", ret))
+		return;
+
+	drm_gem_vram_kunmap_locked(gbo);
+	drm_gem_vram_unpin_locked(gbo);
+
+	ttm_bo_unreserve(&gbo->bo);
+}
+EXPORT_SYMBOL(drm_gem_vram_vunmap);
 
 /**
  * drm_gem_vram_fill_create_dumb() - \
@@ -622,31 +705,12 @@ static void drm_gem_vram_object_unpin(struct drm_gem_object *gem)
 static void *drm_gem_vram_object_vmap(struct drm_gem_object *gem)
 {
 	struct drm_gem_vram_object *gbo = drm_gem_vram_of_gem(gem);
-	int ret;
 	void *base;
 
-	ret = ttm_bo_reserve(&gbo->bo, true, false, NULL);
-	if (ret)
-		return ERR_PTR(ret);
-
-	ret = drm_gem_vram_pin_locked(gbo, 0);
-	if (ret)
-		goto err_ttm_bo_unreserve;
-	base = drm_gem_vram_kmap_locked(gbo, true, NULL);
-	if (IS_ERR(base)) {
-		ret = PTR_ERR(base);
-		goto err_drm_gem_vram_unpin_locked;
-	}
-
-	ttm_bo_unreserve(&gbo->bo);
-
+	base = drm_gem_vram_vmap(gbo);
+	if (IS_ERR(base))
+		return NULL;
 	return base;
-
-err_drm_gem_vram_unpin_locked:
-	drm_gem_vram_unpin_locked(gbo);
-err_ttm_bo_unreserve:
-	ttm_bo_unreserve(&gbo->bo);
-	return ERR_PTR(ret);
 }
 
 /**
@@ -659,16 +723,8 @@ static void drm_gem_vram_object_vunmap(struct drm_gem_object *gem,
 				       void *vaddr)
 {
 	struct drm_gem_vram_object *gbo = drm_gem_vram_of_gem(gem);
-	int ret;
 
-	ret = ttm_bo_reserve(&gbo->bo, false, false, NULL);
-	if (WARN_ONCE(ret, "ttm_bo_reserve_failed(): ret=%d\n", ret))
-		return;
-
-	drm_gem_vram_kunmap_locked(gbo);
-	drm_gem_vram_unpin_locked(gbo);
-
-	ttm_bo_unreserve(&gbo->bo);
+	drm_gem_vram_vunmap(gbo, vaddr);
 }
 
 /*

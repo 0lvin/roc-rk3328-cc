@@ -34,6 +34,8 @@
 
 #include <drm/drm.h>
 
+extern unsigned int drm_debug;
+
 /**
  * DOC: print
  *
@@ -89,9 +91,8 @@ __printf(2, 3)
 void drm_printf(struct drm_printer *p, const char *f, ...);
 void drm_puts(struct drm_printer *p, const char *str);
 void drm_print_regset32(struct drm_printer *p, struct debugfs_regset32 *regset);
-void drm_print_bits(struct drm_printer *p,
-		    unsigned long value, const char *bits[],
-		    unsigned int from, unsigned int to);
+void drm_print_bits(struct drm_printer *p, unsigned long value,
+		    const char * const bits[], unsigned int nbits);
 
 __printf(2, 0)
 /**
@@ -291,6 +292,11 @@ static inline struct drm_printer drm_err_printer(const char *prefix)
 #define DRM_UT_STATE		0x40
 #define DRM_UT_LEASE		0x80
 #define DRM_UT_DP		0x100
+
+static inline bool drm_debug_enabled(unsigned int category)
+{
+	return unlikely(drm_debug & category);
+}
 
 __printf(3, 4)
 void drm_dev_printk(const struct device *dev, const char *level,
