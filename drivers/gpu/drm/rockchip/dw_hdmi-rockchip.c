@@ -19,6 +19,7 @@
 #include <linux/pm_runtime.h>
 #include <uapi/linux/videodev2.h>
 
+#include "../drm_crtc_helper_internal.h"
 #include "rockchip_drm_drv.h"
 #include "rockchip_drm_vop.h"
 
@@ -293,7 +294,7 @@ dw_hdmi_rockchip_mode_valid(struct drm_connector *connector,
 			encoder = funcs->best_encoder(connector);
 		else {
 			dump_stack();
-			encoder = drm_encoder_find(connector->dev, NULL, connector->encoder_ids[0]);
+			encoder = drm_connector_get_single_encoder(connector);
 		}
 	}
 
