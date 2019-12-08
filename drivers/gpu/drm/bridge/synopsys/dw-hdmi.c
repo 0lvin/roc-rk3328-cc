@@ -1536,10 +1536,6 @@ static int hdmi_phy_configure_dwc_hdmi_3d_tx(struct dw_hdmi *hdmi,
 	unsigned int depth =
 		hdmi_bus_fmt_color_depth(hdmi->hdmi_data.enc_out_bus_format);
 
-	if (hdmi_bus_fmt_is_yuv420(hdmi->hdmi_data.enc_out_bus_format) &&
-	    pdata->mpll_cfg_420)
-		mpll_config = pdata->mpll_cfg_420;
-
 	/* TOFIX Will need 420 specific PHY configuration tables */
 
 	/* PLL/MPLL Cfg - always match on final entry */
@@ -2230,7 +2226,6 @@ static void hdmi_disable_overflow_interrupts(struct dw_hdmi *hdmi)
 static int dw_hdmi_setup(struct dw_hdmi *hdmi, struct drm_display_mode *mode)
 {
 	int ret;
-	void *data = hdmi->plat_data->phy_data;
 
 	hdmi_disable_overflow_interrupts(hdmi);
 
@@ -2898,16 +2893,6 @@ static const struct dw_hdmi_cec_ops dw_hdmi_cec_ops = {
 	.disable = dw_hdmi_cec_disable,
 };
 
-static void dw_hdmi_destroy_properties(struct dw_hdmi *hdmi)
-{
-	const struct dw_hdmi_property_ops *ops =
-				hdmi->plat_data->property_ops;
-
-	if (ops && ops->destroy_properties)
-		return ops->destroy_properties(&hdmi->connector,
-					       hdmi->plat_data->phy_data);
-}
-
 static const struct regmap_config hdmi_regmap_8bit_config = {
 	.reg_bits	= 32,
 	.val_bits	= 8,
@@ -3272,8 +3257,6 @@ static void __dw_hdmi_remove(struct dw_hdmi *hdmi)
 	hdmi_writeb(hdmi, ~0, HDMI_IH_MUTE_PHY_STAT0);
 	if (hdmi->cec_notifier)
 		cec_notifier_put(hdmi->cec_notifier);
-
-	dw_hdmi_destroy_properties(hdmi);
 
 	clk_disable_unprepare(hdmi->iahb_clk);
 	clk_disable_unprepare(hdmi->isfr_clk);
