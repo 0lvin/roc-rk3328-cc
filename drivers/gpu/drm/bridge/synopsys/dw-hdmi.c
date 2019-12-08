@@ -2303,7 +2303,7 @@ static int dw_hdmi_setup(struct dw_hdmi *hdmi, struct drm_display_mode *mode)
 
 		/* HDMI Initialization Step E - Configure audio */
 		hdmi_clk_regenerator_update_pixel_clock(hdmi);
-		hdmi_enable_audio_clk(hdmi, true);
+		hdmi_enable_audio_clk(hdmi, hdmi->audio_enable);
 	}
 
 	/* not for DVI mode */
@@ -2492,50 +2492,6 @@ static int dw_hdmi_connector_get_modes(struct drm_connector *connector)
 	return ret;
 }
 
-static int
-dw_hdmi_atomic_connector_set_property(struct drm_connector *connector,
-				      struct drm_connector_state *state,
-				      struct drm_property *property,
-				      uint64_t val)
-{
-	struct dw_hdmi *hdmi = container_of(connector, struct dw_hdmi,
-					     connector);
-	const struct dw_hdmi_property_ops *ops =
-				hdmi->plat_data->property_ops;
-
-	if (ops && ops->set_property)
-		return ops->set_property(connector, state, property,
-					 val, hdmi->plat_data->phy_data);
-	else
-		return -EINVAL;
-}
-
-static int
-dw_hdmi_atomic_connector_get_property(struct drm_connector *connector,
-				      const struct drm_connector_state *state,
-				      struct drm_property *property,
-				      uint64_t *val)
-{
-	struct dw_hdmi *hdmi = container_of(connector, struct dw_hdmi,
-					     connector);
-	const struct dw_hdmi_property_ops *ops =
-				hdmi->plat_data->property_ops;
-
-	if (ops && ops->get_property)
-		return ops->get_property(connector, state, property,
-					 val, hdmi->plat_data->phy_data);
-	else
-		return -EINVAL;
-}
-
-static int
-dw_hdmi_connector_set_property(struct drm_connector *connector,
-			       struct drm_property *property, uint64_t val)
-{
-	return dw_hdmi_atomic_connector_set_property(connector, NULL,
-						     property, val);
-}
-
 static bool hdr_metadata_equal(const struct drm_connector_state *old_state,
 			       const struct drm_connector_state *new_state)
 {
@@ -2593,11 +2549,8 @@ static const struct drm_connector_funcs dw_hdmi_connector_funcs = {
 	.destroy = drm_connector_cleanup,
 	.force = dw_hdmi_connector_force,
 	.reset = drm_atomic_helper_connector_reset,
-	.set_property = dw_hdmi_connector_set_property,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
-	.atomic_set_property = dw_hdmi_atomic_connector_set_property,
-	.atomic_get_property = dw_hdmi_atomic_connector_get_property,
 };
 
 static const struct drm_connector_helper_funcs dw_hdmi_connector_helper_funcs = {
