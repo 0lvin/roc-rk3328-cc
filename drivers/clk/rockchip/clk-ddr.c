@@ -9,7 +9,8 @@
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/of.h>
-#include <drm/drmP.h>
+#include <drm/drm_device.h>
+#include <drm/drm_connector.h>
 #include <drm/drm_modeset_lock.h>
 #include <dt-bindings/display/rk_fb.h>
 #include <linux/rockchip/rockchip_sip.h>
