@@ -40,6 +40,11 @@ properties:
           - const: asus,rk3288-tinker-s
           - const: rockchip,rk3288
 
+      - description: Beelink A1
+        items:
+          - const: azw,beelink-a1
+          - const: rockchip,rk3328
+
       - description: bq Curie 2 tablet
         items:
           - const: mundoreader,bq-curie2
@@ -94,7 +99,9 @@ properties:
 
       - description: Firefly ROC-RK3399-PC
         items:
-          - const: firefly,roc-rk3399-pc
+          - enum:
+              - firefly,roc-rk3399-pc
+              - firefly,roc-rk3399-pc-mezzanine
           - const: rockchip,rk3399
 
       - description: FriendlyElec NanoPi4 series boards
