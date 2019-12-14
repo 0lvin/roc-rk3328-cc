@@ -207,7 +207,6 @@
 		ports = <&vop_out>;
 	};
 
-	/* FIXME:rk3328cc
 	hdmi_sound: hdmi-sound {
 		compatible = "simple-audio-card";
 		simple-audio-card,format = "i2s";
@@ -223,7 +222,6 @@
 			sound-dai = <&hdmi>;
 		};
 	};
-        */
 
 	psci {
 		compatible = "arm,psci-1.0", "arm,psci-0.2";
