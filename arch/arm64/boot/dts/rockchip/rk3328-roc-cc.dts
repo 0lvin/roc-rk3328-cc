@@ -63,21 +63,8 @@
 		};
 	};
 
-	hdmi-sound {
-		compatible = "simple-audio-card";
-		simple-audio-card,format = "i2s";
-		simple-audio-card,mclk-fs = <128>;
-		simple-audio-card,name = "rockchip,hdmi";
-		simple-audio-card,cpu {
-			sound-dai = <&i2s0>;
-		};
-		simple-audio-card,codec {
-			sound-dai = <&hdmi>;
-		};
-	};
-
 	spdif-sound {
-	  status = "disabled";
+		status = "disabled";
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "rockchip,spdif";
 		simple-audio-card,cpu {
@@ -89,7 +76,7 @@
 	};
 
 	spdif_out: spdif-out {
-	  status = "disabled";
+		status = "disabled";
 		compatible = "linux,spdif-dit";
 		#sound-dai-cells = <0>;
 	};
