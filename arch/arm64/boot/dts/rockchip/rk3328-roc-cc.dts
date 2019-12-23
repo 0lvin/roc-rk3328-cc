@@ -63,23 +63,6 @@
 		};
 	};
 
-	spdif-sound {
-		status = "disabled";
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "rockchip,spdif";
-		simple-audio-card,cpu {
-			sound-dai = <&spdif>;
-		};
-		simple-audio-card,codec {
-			sound-dai = <&spdif_out>;
-		};
-	};
-
-	spdif_out: spdif-out {
-		status = "disabled";
-		compatible = "linux,spdif-dit";
-		#sound-dai-cells = <0>;
-	};
 
 	vcc_sd: sdmmc-regulator {
 		compatible = "regulator-fixed";
@@ -667,11 +650,6 @@
 	status = "okay";
 };
 
-&spdif {
-	#sound-dai-cells = <0>;
-	status = "disabled";
-};
-
 &tsadc {
 	status = "okay";
 };
@@ -683,21 +661,21 @@
 };
 
 &u2phy {
-    status = "okay";
+	status = "okay";
 
-    u2phy_host: host-port {
-        phy-supply = <&vcc_otg_5v>;
-        status = "okay";
-    };
+	u2phy_host: host-port {
+		phy-supply = <&vcc_otg_5v>;
+		status = "okay";
+	};
 
-    u2phy_otg: otg-port {
-        phy-supply = <&vcc_host1_5v>;
-        status = "okay";
-    };
+	u2phy_otg: otg-port {
+		phy-supply = <&vcc_host1_5v>;
+		status = "okay";
+	};
 };
 
 &u3phy {
-    phy-supply = <&vcc_host_5v>;
+	phy-supply = <&vcc_host_5v>;
 	status = "okay";
 };
 
