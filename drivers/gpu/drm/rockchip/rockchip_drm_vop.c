@@ -16,7 +16,6 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
-#include <linux/devfreq.h>
 
 #include <drm/drm.h>
 #include <drm/drm_atomic.h>
@@ -39,8 +38,6 @@
 #include "rockchip_drm_fb.h"
 #include "rockchip_drm_vop.h"
 #include "rockchip_rgb.h"
-
-#define MAX_VOPS	2
 
 #define VOP_WIN_SET(vop, win, name, v) \
 		vop_reg_set(vop, &win->phy->name, win->base, ~0, v, #name)
@@ -166,17 +163,11 @@ struct vop {
 	/* vop dclk reset */
 	struct reset_control *dclk_rst;
 
-	struct notifier_block dmc_nb;
-
 	/* optional internal rgb encoder */
 	struct rockchip_rgb *rgb;
 
 	struct vop_win win[];
 };
-
-static struct vop *dmc_vop[MAX_VOPS];
-static struct devfreq *devfreq_vop;
-static DEFINE_MUTEX(register_devfreq_lock);
 
 static inline void vop_writel(struct vop *vop, uint32_t offset, uint32_t v)
 {
@@ -1948,45 +1939,6 @@ out:
 }
 EXPORT_SYMBOL(rockchip_drm_wait_vact_end);
 
-static int dmc_notifier_call(struct notifier_block *nb, unsigned long event,
-			     void *data)
-{
-	struct vop *vop = container_of(nb, struct vop, dmc_nb);
-
-	if (event == DEVFREQ_PRECHANGE)
-		mutex_lock(&vop->vop_lock);
-	else if (event == DEVFREQ_POSTCHANGE)
-		mutex_unlock(&vop->vop_lock);
-
-	return NOTIFY_OK;
-}
-
-int rockchip_drm_register_notifier_to_dmc(struct devfreq *devfreq)
-{
-	int i, j = 0;
-
-	mutex_lock(&register_devfreq_lock);
-
-	devfreq_vop = devfreq;
-
-	for (i = 0; i < ARRAY_SIZE(dmc_vop); i++) {
-		if (!dmc_vop[i])
-			continue;
-		dmc_vop[i]->dmc_nb.notifier_call = dmc_notifier_call;
-		devfreq_register_notifier(devfreq_vop, &dmc_vop[i]->dmc_nb,
-					  DEVFREQ_TRANSITION_NOTIFIER);
-		j++;
-	}
-
-	mutex_unlock(&register_devfreq_lock);
-
-	if (j == 0)
-		return -ENOMEM;
-
-	return 0;
-}
-EXPORT_SYMBOL(rockchip_drm_register_notifier_to_dmc);
-
 static int vop_bind(struct device *dev, struct device *master, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -1994,7 +1946,7 @@ static int vop_bind(struct device *dev, struct device *master, void *data)
 	struct drm_device *drm_dev = data;
 	struct vop *vop;
 	struct resource *res;
-	int ret, irq, i;
+	int ret, irq;
 
 	vop_data = of_device_get_match_data(dev);
 	if (!vop_data)
@@ -2051,23 +2003,6 @@ static int vop_bind(struct device *dev, struct device *master, void *data)
 
 	pm_runtime_enable(&pdev->dev);
 
-	mutex_lock(&register_devfreq_lock);
-
-	for (i = 0; i < ARRAY_SIZE(dmc_vop); i++) {
-		if (dmc_vop[i])
-			continue;
-		if (devfreq_vop) {
-			vop->dmc_nb.notifier_call = dmc_notifier_call;
-			devfreq_register_notifier(devfreq_vop,
-						  &vop->dmc_nb,
-						  DEVFREQ_TRANSITION_NOTIFIER);
-		}
-		dmc_vop[i] = vop;
-		break;
-	}
-
-	mutex_unlock(&register_devfreq_lock);
-
 	ret = vop_initial(vop);
 	if (ret < 0) {
 		DRM_DEV_ERROR(&pdev->dev,
@@ -2099,24 +2034,6 @@ err_disable_pm_runtime:
 static void vop_unbind(struct device *dev, struct device *master, void *data)
 {
 	struct vop *vop = dev_get_drvdata(dev);
-	int i;
-
-	mutex_lock(&register_devfreq_lock);
-
-	for (i = 0; i < ARRAY_SIZE(dmc_vop); i++) {
-		if (dmc_vop[i] != vop)
-			continue;
-		dmc_vop[i] = NULL;
-
-		if (!devfreq_vop)
-			break;
-		devfreq_unregister_notifier(devfreq_vop,
-					    &vop->dmc_nb,
-					    DEVFREQ_TRANSITION_NOTIFIER);
-		break;
-	}
-
-	mutex_unlock(&register_devfreq_lock);
 
 	if (vop->rgb)
 		rockchip_rgb_fini(vop->rgb);

@@ -239,20 +239,11 @@ struct vop_data {
 /*
  * display output interface supported by rockchip lcdc
  */
-#define ROCKCHIP_OUT_MODE_P888		0
-#define ROCKCHIP_OUT_MODE_P666		1
-#define ROCKCHIP_OUT_MODE_P565		2
-#define ROCKCHIP_OUT_MODE_S888		8
-#define ROCKCHIP_OUT_MODE_S888_DUMMY	12
-#define ROCKCHIP_OUT_MODE_YUV420	14
+#define ROCKCHIP_OUT_MODE_P888	0
+#define ROCKCHIP_OUT_MODE_P666	1
+#define ROCKCHIP_OUT_MODE_P565	2
 /* for use special outface */
-#define ROCKCHIP_OUT_MODE_AAAA		15
-
-#define ROCKCHIP_OUT_MODE_TYPE(x)	((x) >> 16)
-#define ROCKCHIP_OUT_MODE(x)		((x) & 0xffff)
-#define ROCKCHIP_DSP_MODE(type, mode) \
-		(DRM_MODE_CONNECTOR_##type << 16) | \
-		(ROCKCHIP_OUT_MODE_##mode & 0xffff)
+#define ROCKCHIP_OUT_MODE_AAAA	15
 
 /* output flags */
 #define ROCKCHIP_OUTPUT_DSI_DUAL	BIT(0)
