@@ -52,18 +52,10 @@ struct rockchip_atomic_commit {
 
 struct rockchip_crtc_state {
 	struct drm_crtc_state base;
-	struct drm_property_blob *cabc_lut;
-	struct drm_tv_connector_state *tv_state;
-	int left_margin;
-	int right_margin;
-	int top_margin;
-	int bottom_margin;
-	int dsp_layer_sel;
 	int output_type;
 	int output_mode;
 	int output_bpc;
 	int output_flags;
-	int bus_format;
 };
 #define to_rockchip_crtc_state(s) \
 		container_of(s, struct rockchip_crtc_state, base)
@@ -87,15 +79,9 @@ struct rockchip_drm_private {
 	const struct rockchip_crtc_funcs *crtc_funcs[ROCKCHIP_MAX_CRTC];
 	struct rockchip_atomic_commit *commit;
 	/* protect async commit */
-	struct mutex commit_lock;
-	struct work_struct commit_work;
-	struct gen_pool *secure_buffer_pool;
 	struct devfreq *devfreq;
 };
 
-int rockchip_register_crtc_funcs(struct drm_crtc *crtc,
-				 const struct rockchip_crtc_funcs *crtc_funcs);
-void rockchip_unregister_crtc_funcs(struct drm_crtc *crtc);
 int rockchip_drm_dma_attach_device(struct drm_device *drm_dev,
 				   struct device *dev);
 void rockchip_drm_dma_detach_device(struct drm_device *drm_dev,

@@ -83,16 +83,6 @@ struct vop_misc {
 	struct vop_reg global_regdone_en;
 };
 
-struct vop_csc {
-	struct vop_reg y2r_en;
-	struct vop_reg r2r_en;
-	struct vop_reg r2y_en;
-
-	uint32_t y2r_offset;
-	uint32_t r2r_offset;
-	uint32_t r2y_offset;
-};
-
 struct vop_intr {
 	const int *intrs;
 	uint32_t nintrs;
@@ -172,18 +162,9 @@ struct vop_win_yuv2yuv_data {
 
 struct vop_win_data {
 	uint32_t base;
-	enum drm_plane_type type;
 	const struct vop_win_phy *phy;
-	const struct vop_win_phy **area;
-	const struct vop_csc *csc;
-	unsigned int area_size;
-	u64 feature;
+	enum drm_plane_type type;
 };
-
-#define WIN_FEATURE_HDR2SDR		BIT(0)
-#define WIN_FEATURE_SDR2HDR		BIT(1)
-#define WIN_FEATURE_PRE_OVERLAY		BIT(2)
-#define WIN_FEATURE_AFBDC		BIT(3)
 
 struct vop_data {
 	uint32_t version;
@@ -201,8 +182,6 @@ struct vop_data {
 #define VOP_FEATURE_INTERNAL_RGB	BIT(1)
 	u64 feature;
 };
-
-#define CVBS_PAL_VDISPLAY		288
 
 /* interrupt define */
 #define DSP_HOLD_VALID_INTR		(1 << 0)
