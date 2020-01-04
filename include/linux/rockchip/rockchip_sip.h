@@ -16,57 +16,21 @@
 #include <linux/io.h>
 
 /* SMC function IDs for SiP Service queries, compatible with kernel-3.10 */
-#define SIP_ATF_VERSION			0x82000001
 #define SIP_ACCESS_REG			0x82000002
 #define SIP_SUSPEND_MODE		0x82000003
-#define SIP_PENDING_CPUS		0x82000004
-#define SIP_UARTDBG_CFG			0x82000005
-#define SIP_UARTDBG_CFG64		0xc2000005
-#define SIP_MCU_EL3FIQ_CFG		0x82000006
-#define SIP_ACCESS_CHIP_STATE64		0xc2000006
-#define SIP_SECURE_MEM_CONFIG		0x82000007
-#define SIP_ACCESS_CHIP_EXTRA_STATE64	0xc2000007
 #define SIP_DRAM_CONFIG			0x82000008
 #define SIP_SHARE_MEM			0x82000009
 #define SIP_SIP_VERSION			0x8200000a
 #define SIP_REMOTECTL_CFG		0x8200000b
-#define PSCI_SIP_VPU_RESET		0x8200000c
 
 /* Rockchip Sip version */
-#define SIP_IMPLEMENT_V1                (1)
 #define SIP_IMPLEMENT_V2                (2)
 
-/* Trust firmware version */
-#define ATF_VER_MAJOR(ver)		(((ver) >> 16) & 0xffff)
-#define ATF_VER_MINOR(ver)		(((ver) >> 0) & 0xffff)
-
 /* SIP_ACCESS_REG: read or write */
-#define SECURE_REG_RD			0x0
 #define SECURE_REG_WR			0x1
-
-/* Fiq debugger share memory: 8KB enough */
-#define FIQ_UARTDBG_PAGE_NUMS		2
-#define FIQ_UARTDBG_SHARE_MEM_SIZE	((FIQ_UARTDBG_PAGE_NUMS) * 4096)
 
 /* Error return code */
 #define IS_SIP_ERROR(x)			(!!(x))
-
-#define SIP_RET_SUCCESS			0
-#define SIP_RET_SMC_UNKNOWN		-1
-#define SIP_RET_NOT_SUPPORTED		-2
-#define SIP_RET_INVALID_PARAMS		-3
-#define SIP_RET_INVALID_ADDRESS		-4
-#define SIP_RET_DENIED			-5
-
-/* SIP_UARTDBG_CFG64 call types */
-#define UARTDBG_CFG_INIT		0xf0
-#define UARTDBG_CFG_OSHDL_TO_OS		0xf1
-#define UARTDBG_CFG_OSHDL_CPUSW		0xf3
-#define UARTDBG_CFG_OSHDL_DEBUG_ENABLE	0xf4
-#define UARTDBG_CFG_OSHDL_DEBUG_DISABLE	0xf5
-#define UARTDBG_CFG_PRINT_PORT		0xf7
-#define UARTDBG_CFG_FIQ_ENABEL		0xf8
-#define UARTDBG_CFG_FIQ_DISABEL		0xf9
 
 /* SIP_SUSPEND_MODE32 call types */
 #define SUSPEND_MODE_CONFIG		0x01
@@ -101,33 +65,14 @@ typedef enum {
  * a1~a3: data
  */
 #ifdef CONFIG_ROCKCHIP_SIP
-struct arm_smccc_res sip_smc_get_atf_version(void);
-struct arm_smccc_res sip_smc_get_sip_version(void);
 struct arm_smccc_res sip_smc_dram(u32 arg0, u32 arg1, u32 arg2);
 struct arm_smccc_res sip_smc_request_share_mem(u32 page_num,
 					       share_page_type_t page_type);
-struct arm_smccc_res sip_smc_mcu_el3fiq(u32 arg0, u32 arg1, u32 arg2);
-struct arm_smccc_res sip_smc_vpu_reset(u32 arg0, u32 arg1, u32 arg2);
 
 int sip_smc_set_suspend_mode(u32 ctrl, u32 config1, u32 config2);
 int sip_smc_virtual_poweroff(void);
 int sip_smc_remotectl_config(u32 func, u32 data);
-
-int sip_smc_secure_reg_write(u32 addr_phy, u32 val);
-u32 sip_smc_secure_reg_read(u32 addr_phy);
 #else
-static inline struct arm_smccc_res sip_smc_get_atf_version(void)
-{
-	struct arm_smccc_res tmp = {0};
-	return tmp;
-}
-
-static inline struct arm_smccc_res sip_smc_get_sip_version(void)
-{
-	struct arm_smccc_res tmp = {0};
-	return tmp;
-}
-
 static inline struct arm_smccc_res sip_smc_dram(u32 arg0, u32 arg1, u32 arg2)
 {
 	struct arm_smccc_res tmp = {0};
@@ -141,20 +86,6 @@ static inline struct arm_smccc_res sip_smc_request_share_mem
 	return tmp;
 }
 
-static inline struct arm_smccc_res sip_smc_mcu_el3fiq
-			(u32 arg0, u32 arg1, u32 arg2)
-{
-	struct arm_smccc_res tmp = {0};
-	return tmp;
-}
-
-static inline struct arm_smccc_res
-sip_smc_vpu_reset(u32 arg0, u32 arg1, u32 arg2)
-{
-	struct arm_smccc_res tmp = {0};
-	return tmp;
-}
-
 static inline int sip_smc_set_suspend_mode(u32 ctrl, u32 config1, u32 config2)
 {
 	return 0;
@@ -162,44 +93,5 @@ static inline int sip_smc_set_suspend_mode(u32 ctrl, u32 config1, u32 config2)
 
 static inline int sip_smc_virtual_poweroff(void) { return 0; }
 static inline int sip_smc_remotectl_config(u32 func, u32 data) { return 0; }
-static inline u32 sip_smc_secure_reg_read(u32 addr_phy) { return 0; }
-static inline int sip_smc_secure_reg_write(u32 addr_phy, u32 val) { return 0; }
 #endif
-
-/* optee cpu_context */
-struct sm_nsec_ctx {
-	u32 usr_sp;
-	u32 usr_lr;
-	u32 irq_spsr;
-	u32 irq_sp;
-	u32 irq_lr;
-	u32 fiq_spsr;
-	u32 fiq_sp;
-	u32 fiq_lr;
-	u32 svc_spsr;
-	u32 svc_sp;
-	u32 svc_lr;
-	u32 abt_spsr;
-	u32 abt_sp;
-	u32 abt_lr;
-	u32 und_spsr;
-	u32 und_sp;
-	u32 und_lr;
-	u32 mon_lr;
-	u32 mon_spsr;
-	u32 r4;
-	u32 r5;
-	u32 r6;
-	u32 r7;
-	u32 r8;
-	u32 r9;
-	u32 r10;
-	u32 r11;
-	u32 r12;
-	u32 r0;
-	u32 r1;
-	u32 r2;
-	u32 r3;
-};
-
 #endif

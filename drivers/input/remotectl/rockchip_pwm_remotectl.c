@@ -46,7 +46,6 @@ module_param_named(dbg_level, rk_remote_pwm_dbg_level, int, 0644);
 		} \
 	} while (0)
 
-
 struct rkxx_remote_key_table {
 	int scancode;
 	int keycode;
@@ -106,7 +105,6 @@ static int remotectl_keybd_num_lookup(struct rkxx_remotectl_drvdata *ddata)
 	return 0;
 }
 
-
 static int remotectl_keycode_lookup(struct rkxx_remotectl_drvdata *ddata)
 {
 	int i;
@@ -142,7 +140,6 @@ static int rk_remotectl_get_irkeybd_count(struct platform_device *pdev)
 	DBG("get keybd num = 0x%x.\n", boardnum);
 	return boardnum;
 }
-
 
 static int rk_remotectl_parse_ir_keys(struct platform_device *pdev)
 {
@@ -187,8 +184,6 @@ static int rk_remotectl_parse_ir_keys(struct platform_device *pdev)
 	DBG("keybdNum=0x%x\n",boardnum);
 	return 0;
 }
-
-
 
 static void rk_pwm_remotectl_do_something(unsigned long  data)
 {
@@ -346,8 +341,6 @@ static irqreturn_t rockchip_pwm_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-
-
 static int rk_pwm_remotectl_hw_init(struct rkxx_remotectl_drvdata *ddata)
 {
 	int val;
@@ -424,7 +417,7 @@ static int remotectl_fb_event_notify(struct notifier_block *self, unsigned long 
 }
 
 static struct notifier_block remotectl_fb_notifier = {
-         .notifier_call = remotectl_fb_event_notify,
+	.notifier_call = remotectl_fb_event_notify,
 };
 
 static int rk_pwm_probe(struct platform_device *pdev)
