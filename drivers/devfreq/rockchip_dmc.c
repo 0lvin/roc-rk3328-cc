@@ -33,7 +33,6 @@
 #include <linux/pm_opp.h>
 #include <linux/reboot.h>
 #include <linux/regulator/consumer.h>
-#include <soc/rockchip/rockchip_sip.h>
 #include <linux/rwsem.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -981,8 +980,9 @@ static int rockchip_ddr_set_auto_self_refresh(uint32_t en)
 	struct arm_smccc_res res;
 
 	ddr_psci_param->sr_idle_en = en;
-	res = sip_smc_dram(SHARE_PAGE_TYPE_DDR, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_SET_AT_SR);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, SHARE_PAGE_TYPE_DDR, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_SET_AT_SR,
+		      0, 0, 0, 0, &res);
 
 	return res.a0;
 }
@@ -993,8 +993,9 @@ static int rk3328_dmc_init(struct platform_device *pdev,
 	struct arm_smccc_res res;
 	u32 size;
 
-	res = sip_smc_dram(0, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_GET_VERSION);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, 0, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_GET_VERSION,
+		      0, 0, 0, 0, &res);
 	dev_notice(&pdev->dev, "current ATF version 0x%lx!\n", res.a1);
 	if (res.a0 || (res.a1 < 0x101)) {
 		dev_err(&pdev->dev,
@@ -1019,8 +1020,9 @@ static int rk3328_dmc_init(struct platform_device *pdev,
 	of_get_rk3328_timings(&pdev->dev, pdev->dev.of_node,
 			      (uint32_t *)ddr_psci_param);
 
-	res = sip_smc_dram(SHARE_PAGE_TYPE_DDR, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_INIT);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, SHARE_PAGE_TYPE_DDR, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_INIT,
+		      0, 0, 0, 0, &res);
 	if (res.a0) {
 		dev_err(&pdev->dev, "rockchip_sip_config_dram_init error:%lx\n",
 			res.a0);

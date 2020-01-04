@@ -13,7 +13,6 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_modeset_lock.h>
 #include <dt-bindings/display/rk_fb.h>
-#include <soc/rockchip/rockchip_sip.h>
 #include <uapi/drm/drm_mode.h>
 #include <linux/slab.h>
 #include <soc/rockchip/rockchip_sip.h>
@@ -206,8 +205,9 @@ static int rockchip_ddrclk_sip_set_rate_v2(struct clk_hw *hw,
 	p->wait_flag1 = 1;
 	p->wait_flag0 = 1;
 
-	res = sip_smc_dram(SHARE_PAGE_TYPE_DDR, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_SET_RATE);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, SHARE_PAGE_TYPE_DDR, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_SET_RATE,
+		      0, 0, 0, 0, &res);
 
 	return res.a0;
 }
@@ -217,8 +217,9 @@ static unsigned long rockchip_ddrclk_sip_recalc_rate_v2
 {
 	struct arm_smccc_res res;
 
-	res = sip_smc_dram(SHARE_PAGE_TYPE_DDR, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_GET_RATE);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, SHARE_PAGE_TYPE_DDR, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_GET_RATE,
+		      0, 0, 0, 0, &res);
 	if (!res.a0)
 		return res.a1;
 	else
@@ -239,8 +240,9 @@ static long rockchip_ddrclk_sip_round_rate_v2(struct clk_hw *hw,
 
 	p->hz = rate;
 
-	res = sip_smc_dram(SHARE_PAGE_TYPE_DDR, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_ROUND_RATE);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, SHARE_PAGE_TYPE_DDR, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_ROUND_RATE,
+		      0, 0, 0, 0, &res);
 	if (!res.a0)
 		return res.a1;
 	else

@@ -70,7 +70,6 @@ typedef enum {
  * a1~a3: data
  */
 #ifdef CONFIG_ROCKCHIP_SIP
-struct arm_smccc_res sip_smc_dram(u32 arg0, u32 arg1, u32 arg2);
 struct arm_smccc_res sip_smc_request_share_mem(u32 page_num,
 					       share_page_type_t page_type);
 
@@ -78,12 +77,6 @@ int sip_smc_set_suspend_mode(u32 ctrl, u32 config1, u32 config2);
 int sip_smc_virtual_poweroff(void);
 int sip_smc_remotectl_config(u32 func, u32 data);
 #else
-static inline struct arm_smccc_res sip_smc_dram(u32 arg0, u32 arg1, u32 arg2)
-{
-	struct arm_smccc_res tmp = {0};
-	return tmp;
-}
-
 static inline struct arm_smccc_res sip_smc_request_share_mem
 			(u32 page_num, share_page_type_t page_type)
 {
