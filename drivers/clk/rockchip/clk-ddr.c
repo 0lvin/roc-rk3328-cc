@@ -13,7 +13,7 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_modeset_lock.h>
 #include <dt-bindings/display/rk_fb.h>
-#include <linux/rockchip/rockchip_sip.h>
+#include <soc/rockchip/rockchip_sip.h>
 #include <uapi/drm/drm_mode.h>
 #include <linux/slab.h>
 #include <soc/rockchip/rockchip_sip.h>

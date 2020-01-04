@@ -13,7 +13,7 @@
 
 #include <linux/arm-smccc.h>
 #include <linux/io.h>
-#include <linux/rockchip/rockchip_sip.h>
+#include <soc/rockchip/rockchip_sip.h>
 #include <asm/cputype.h>
 #ifdef CONFIG_ARM
 #include <asm/psci.h>
@@ -43,7 +43,7 @@ static struct arm_smccc_res __invoke_sip_fn_smc(unsigned long function_id,
 
 struct arm_smccc_res sip_smc_dram(u32 arg0, u32 arg1, u32 arg2)
 {
-	return __invoke_sip_fn_smc(SIP_DRAM_CONFIG, arg0, arg1, arg2);
+	return __invoke_sip_fn_smc(ROCKCHIP_SIP_DRAM_FREQ, arg0, arg1, arg2);
 }
 
 int sip_smc_set_suspend_mode(u32 ctrl, u32 config1, u32 config2)

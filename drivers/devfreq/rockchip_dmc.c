@@ -33,7 +33,7 @@
 #include <linux/pm_opp.h>
 #include <linux/reboot.h>
 #include <linux/regulator/consumer.h>
-#include <linux/rockchip/rockchip_sip.h>
+#include <soc/rockchip/rockchip_sip.h>
 #include <linux/rwsem.h>
 #include <linux/slab.h>
 #include <linux/string.h>

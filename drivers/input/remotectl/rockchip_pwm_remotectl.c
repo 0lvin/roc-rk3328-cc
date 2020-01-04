@@ -14,7 +14,7 @@
 #include <linux/input.h>
 #include <linux/workqueue.h>
 #include <linux/slab.h>
-#include <linux/rockchip/rockchip_sip.h>
+#include <soc/rockchip/rockchip_sip.h>
 #include <linux/leds.h>
 #include <linux/fb.h>
 
