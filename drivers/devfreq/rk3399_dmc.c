@@ -1,45 +1,41 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016, Fuzhou Rockchip Electronics Co., Ltd.
  * Author: Lin Huang <hl@rock-chips.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 
+#include <linux/arm-smccc.h>
+#include <linux/clk.h>
+#include <linux/delay.h>
+#include <linux/devfreq.h>
+#include <linux/devfreq-event.h>
+#include <linux/interrupt.h>
+#include <linux/mfd/syscon.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
+#include <linux/pm_opp.h>
+#include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
+#include <linux/rwsem.h>
+#include <linux/suspend.h>
+
+#include <soc/rockchip/rk3399_grf.h>
+#include <soc/rockchip/rockchip_sip.h>
+
+#include <linux/reboot.h>
+#include <linux/thermal.h>
+#include <linux/slab.h>
+#include <linux/string.h>
 #include <dt-bindings/clock/rockchip-ddr.h>
 #include <dt-bindings/display/rk_fb.h>
 #include <dt-bindings/soc/rockchip-system-status.h>
 #include <drm/drm_device.h>
 #include <drm/drm_modeset_lock.h>
-#include <linux/arm-smccc.h>
-#include <linux/clk.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
-#include <linux/delay.h>
-#include <linux/devfreq.h>
 #include <linux/devfreq_cooling.h>
-#include <linux/devfreq-event.h>
 #include <linux/fb.h>
-#include <linux/interrupt.h>
-#include <linux/module.h>
-#include <linux/of.h>
-#include <linux/platform_device.h>
-#include <linux/pm_opp.h>
-#include <linux/reboot.h>
-#include <linux/regulator/consumer.h>
-#include <linux/rwsem.h>
-#include <linux/slab.h>
-#include <linux/string.h>
-#include <linux/suspend.h>
-#include <linux/thermal.h>
-
-#include <soc/rockchip/rockchip_sip.h>
 #include <soc/rockchip/rockchip-system-status.h>
 #include <soc/rockchip/rockchip_opp_select.h>
 #include <uapi/drm/drm_mode.h>
@@ -657,11 +653,10 @@ static int rockchip_dmcfreq_target(struct device *dev, unsigned long *freq,
 		}
 	}
 
-	dev_dbg(dev, "%lu-->%lu\n", old_clk_rate, target_rate);
 	err = clk_set_rate(dmcfreq->dmc_clk, target_rate);
 	if (err) {
-		dev_err(dev, "Cannot set frequency %lu (%d)\n",
-			target_rate, err);
+		dev_err(dev, "Cannot set frequency %lu (%d)\n", target_rate,
+			err);
 		regulator_set_voltage(dmcfreq->vdd_center, dmcfreq->volt,
 				      INT_MAX);
 		goto out;
@@ -677,7 +672,7 @@ static int rockchip_dmcfreq_target(struct device *dev, unsigned long *freq,
 
 	/* If get the incorrect rate, set voltage to old value. */
 	if (dmcfreq->rate != target_rate) {
-		dev_err(dev, "Get wrong frequency, Request %lu, Current %lu\n",
+		dev_err(dev, "Got wrong frequency, Request %lu, Current %lu\n",
 			target_rate, dmcfreq->rate);
 		regulator_set_voltage(dmcfreq->vdd_center, dmcfreq->volt,
 				      INT_MAX);
@@ -686,7 +681,7 @@ static int rockchip_dmcfreq_target(struct device *dev, unsigned long *freq,
 		err = regulator_set_voltage(dmcfreq->vdd_center, target_volt,
 					    INT_MAX);
 		if (err) {
-			dev_err(dev, "Cannot set vol %lu uV\n", target_volt);
+			dev_err(dev, "Cannot set voltage %lu uV\n", target_volt);
 			goto out;
 		}
 	}
@@ -694,6 +689,7 @@ static int rockchip_dmcfreq_target(struct device *dev, unsigned long *freq,
 	dmcfreq->devfreq->last_status.current_frequency = opp_rate;
 
 	dmcfreq->volt = target_volt;
+
 out:
 	__cpufreq_driver_target(policy, cpufreq_cur, CPUFREQ_RELATION_L);
 	up_write(&policy->rwsem);
