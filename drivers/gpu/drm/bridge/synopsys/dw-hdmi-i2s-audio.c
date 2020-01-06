@@ -113,19 +113,7 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	hdmi_update_bits(audio, HDMI_MC_SWRSTZ_I2S_RESET_MSK,
 			 HDMI_MC_SWRSTZ_I2S_RESET_MSK, HDMI_MC_SWRSTZ);
 
-	switch (hparms->mode) {
-	case NLPCM:
-		hdmi_write(audio, HDMI_AUD_CONF2_NLPCM, HDMI_AUD_CONF2);
-		conf1 = HDMI_AUD_CONF1_WIDTH_21;
-		break;
-	case HBR:
-		hdmi_write(audio, HDMI_AUD_CONF2_HBR, HDMI_AUD_CONF2);
-		conf1 = HDMI_AUD_CONF1_WIDTH_21;
-		break;
-	default:
-		hdmi_write(audio, val, HDMI_AUD_CONF2);
-		break;
-	}
+	hdmi_write(audio, val, HDMI_AUD_CONF2);
 
 	switch (fmt->fmt) {
 	case HDMI_I2S:
