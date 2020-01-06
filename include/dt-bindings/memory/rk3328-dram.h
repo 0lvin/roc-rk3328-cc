@@ -50,14 +50,6 @@
 #define DDR3_ODT_60ohm			(60)
 #define DDR3_ODT_120ohm			(120)
 
-#define LP2_DS_34ohm			(34)
-#define LP2_DS_40ohm			(40)
-#define LP2_DS_48ohm			(48)
-#define LP2_DS_60ohm			(60)
-#define LP2_DS_68_6ohm			(68)	/* optional */
-#define LP2_DS_80ohm			(80)
-#define LP2_DS_120ohm			(120)	/* optional */
-
 #define LP3_DS_34ohm			(34)
 #define LP3_DS_40ohm			(40)
 #define LP3_DS_48ohm			(48)
