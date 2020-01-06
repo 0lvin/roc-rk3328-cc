@@ -762,21 +762,21 @@
 	};
 
 	ir_key2 {
-        rockchip,usercode = <0xff00>;
-        rockchip,key_table =
-            <0xeb   KEY_POWER>,
-            <0xec   KEY_COMPOSE>,
-            <0xfe   KEY_BACK>,
-            <0xb7   KEY_HOME>,
-            <0xa3   KEY_WWW>,
-            <0xf4   KEY_VOLUMEUP>,
-            <0xa7   KEY_VOLUMEDOWN>,
-            <0xf8   KEY_ENTER>,
-            <0xfc   KEY_UP>,
-            <0xfd   KEY_DOWN>,
-            <0xf1   KEY_LEFT>,
-            <0xe5   KEY_RIGHT>;
-    };
+		rockchip,usercode = <0xff00>;
+		rockchip,key_table =
+			<0xeb	KEY_POWER>,
+			<0xec	KEY_COMPOSE>,
+			<0xfe	KEY_BACK>,
+			<0xb7	KEY_HOME>,
+			<0xa3	KEY_WWW>,
+			<0xf4	KEY_VOLUMEUP>,
+			<0xa7	KEY_VOLUMEDOWN>,
+			<0xf8	KEY_ENTER>,
+			<0xfc	KEY_UP>,
+			<0xfd	KEY_DOWN>,
+			<0xf1	KEY_LEFT>,
+			<0xe5	KEY_RIGHT>;
+	};
 
 	ir_key3 {
 		rockchip,usercode = <0x1dcc>;

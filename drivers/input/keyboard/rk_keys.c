@@ -155,17 +155,6 @@ static irqreturn_t keys_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-/*
-static ssize_t adc_value_show(struct device *dev, struct device_attribute *attr,
-			      char *buf)
-{
-	struct rk_keys_drvdata *ddata = dev_get_drvdata(dev);
-
-	return sprintf(buf, "adc_value: %d\n", ddata->result);
-}
-static DEVICE_ATTR(get_adc_value, S_IRUGO | S_IWUSR, adc_value_show, NULL);
-*/
-
 static const struct of_device_id rk_key_match[] = {
 	{ .compatible = "rockchip,key", .data = NULL},
 	{},
