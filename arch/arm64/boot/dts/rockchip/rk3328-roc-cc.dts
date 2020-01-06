@@ -63,7 +63,6 @@
 		};
 	};
 
-
 	vcc_sd: sdmmc-regulator {
 		compatible = "regulator-fixed";
 		gpio = <&gpio0 RK_PD6 GPIO_ACTIVE_LOW>;
@@ -143,7 +142,7 @@
 
 		power {
 			label = "firefly:blue:power";
-			linux,default-trigger = "ir-power-click";
+			linux,default-trigger = "heartbeat";
 			gpios = <&rk805 1 GPIO_ACTIVE_LOW>;
 			default-state = "on";
 			mode = <0x23>;
@@ -416,7 +415,7 @@
 &i2c1 {
 	status = "okay";
 
-	rk805: rk805@18 {
+	rk805: pmic@18 {
 		compatible = "rockchip,rk805";
 		status = "okay";
 		reg = <0x18>;
@@ -456,7 +455,7 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			vdd_logic: RK805_DCDC1@0 {
+			vdd_logic: DCDC_REG1 {
 				regulator-compatible = "RK805_DCDC1";
 				regulator-name = "vdd_logic";
 				regulator-min-microvolt = <712500>;
@@ -472,7 +471,7 @@
 				};
 			};
 
-			vdd_arm: RK805_DCDC2@1 {
+			vdd_arm: DCDC_REG2 {
 				regulator-compatible = "RK805_DCDC2";
 				regulator-name = "vdd_arm";
 				regulator-min-microvolt = <712500>;
@@ -488,7 +487,7 @@
 				};
 			};
 
-			vcc_ddr: RK805_DCDC3@2 {
+			vcc_ddr: DCDC_REG3 {
 				regulator-compatible = "RK805_DCDC3";
 				regulator-name = "vcc_ddr";
 				regulator-initial-mode = <0x1>;
@@ -500,7 +499,7 @@
 				};
 			};
 
-			vcc_io: RK805_DCDC4@3 {
+			vcc_io: DCDC_REG4 {
 				regulator-compatible = "RK805_DCDC4";
 				regulator-name = "vcc_io";
 				regulator-min-microvolt = <3300000>;
@@ -515,7 +514,7 @@
 				};
 			};
 
-			vcc_18: RK805_LDO1@4 {
+			vcc_18: LDO_REG1 {
 				regulator-compatible = "RK805_LDO1";
 				regulator-name = "vcc_18";
 				regulator-min-microvolt = <1800000>;
@@ -528,7 +527,7 @@
 				};
 			};
 
-			vcc18_emmc: RK805_LDO2@5 {
+			vcc18_emmc: LDO_REG2 {
 				regulator-compatible = "RK805_LDO2";
 				regulator-name = "vcc18_emmc";
 				regulator-min-microvolt = <1800000>;
@@ -541,7 +540,7 @@
 				};
 			};
 
-			vdd_10: RK805_LDO3@6 {
+			vdd_10: LDO_REG3 {
 				regulator-compatible = "RK805_LDO3";
 				regulator-name = "vdd_10";
 				regulator-min-microvolt = <1000000>;
@@ -662,16 +661,20 @@
 
 &u2phy {
 	status = "okay";
+};
 
-	u2phy_host: host-port {
-		phy-supply = <&vcc_otg_5v>;
-		status = "okay";
-	};
+&u2phy_host {
+	phy-supply = <&vcc_otg_5v>;
+	status = "okay";
+};
 
-	u2phy_otg: otg-port {
-		phy-supply = <&vcc_host1_5v>;
-		status = "okay";
-	};
+&u2phy_otg {
+	phy-supply = <&vcc_host1_5v>;
+	status = "okay";
+};
+
+&uart2 {
+	status = "okay";
 };
 
 &u3phy {
