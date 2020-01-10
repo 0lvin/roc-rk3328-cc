@@ -46,15 +46,6 @@
 #define APIOS_SUSPEND_CONFIG		0x06
 #define VIRTUAL_POWEROFF		0x07
 
-/* SIP_REMOTECTL_CFG call types */
-#define	REMOTECTL_SET_IRQ		0xf0
-#define REMOTECTL_SET_PWM_CH		0xf1
-#define REMOTECTL_SET_PWRKEY		0xf2
-#define REMOTECTL_GET_WAKEUP_STATE	0xf3
-#define REMOTECTL_ENABLE		0xf4
-/* wakeup state */
-#define REMOTECTL_PWRKEY_WAKEUP		0xdeadbeaf
-
 /* Share mem page types */
 typedef enum {
 	SHARE_PAGE_TYPE_INVALID = 0,
