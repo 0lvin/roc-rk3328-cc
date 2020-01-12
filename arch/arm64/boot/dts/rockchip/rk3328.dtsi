@@ -871,27 +871,6 @@
 		power-domains = <&power RK3328_PD_VIDEO>;
 	};
 
-	h265e: h265e@ff330000 {
-		compatible = "rockchip,h265e";
-		rockchip,grf = <&grf>;
-		iommu_enabled = <1>;
-		iommus = <&h265e_mmu>;
-		reg = <0x0 0xff330000 0 0x200>;
-		interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
-		clocks = <&cru ACLK_H265>, <&cru PCLK_H265>,
-			<&cru SCLK_VENC_CORE>, <&cru SCLK_VENC_DSP>,
-			<&cru ACLK_RKVENC>, <&cru ACLK_AXISRAM>;
-		clock-names = "aclk_h265", "pclk_h265", "clk_core",
-			"clk_dsp", "aclk_venc", "aclk_axi2sram";
-		rockchip,srv = <&venc_srv>;
-		mode_bit = <11>;
-		mode_ctrl = <0x40c>;
-		name = "h265e";
-		allocator = <1>;
-		power-domains = <&power RK3328_PD_HEVC>;
-		status = "disabled";
-	};
-
 	vepu: vepu@ff340000 {
 		compatible = "rockchip,rk3328-vepu", "rockchip,vepu";
 		rockchip,grf = <&grf>;
