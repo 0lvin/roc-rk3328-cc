@@ -30,15 +30,12 @@
 #include <dt-bindings/clock/rockchip-ddr.h>
 #include <dt-bindings/display/rk_fb.h>
 #include <dt-bindings/soc/rockchip-system-status.h>
-#include <drm/drm_device.h>
-#include <drm/drm_modeset_lock.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/devfreq_cooling.h>
 #include <linux/fb.h>
 #include <soc/rockchip/rockchip-system-status.h>
 #include <soc/rockchip/rockchip_opp_select.h>
-#include <uapi/drm/drm_mode.h>
 
 #include "governor.h"
 
@@ -72,7 +69,6 @@ struct video_info {
 
 struct share_params {
 	u32 hz;
-	u32 lcdc_type;
 	u32 vop;
 	u32 vop_dclk_mode;
 	u32 sr_idle_en;
