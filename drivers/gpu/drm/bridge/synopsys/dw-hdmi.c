@@ -3193,7 +3193,6 @@ __dw_hdmi_probe(struct platform_device *pdev,
 		audio.read	= hdmi_readb;
 		hdmi->enable_audio = dw_hdmi_i2s_audio_enable;
 		hdmi->disable_audio = dw_hdmi_i2s_audio_disable;
-		audio.mod	= hdmi_modb;
 
 		pdevinfo.name = "dw-hdmi-i2s-audio";
 		pdevinfo.data = &audio;

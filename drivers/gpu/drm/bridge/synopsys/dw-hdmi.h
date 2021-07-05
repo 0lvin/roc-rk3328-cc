@@ -158,13 +158,6 @@
 #define HDMI_FC_SPDDEVICEINF                    0x1062
 #define HDMI_FC_AUDSCONF                        0x1063
 #define HDMI_FC_AUDSSTAT                        0x1064
-#define HDMI_FC_AUDSCHNLS0                      0x1067
-#define HDMI_FC_AUDSCHNLS1                      0x1068
-#define HDMI_FC_AUDSCHNLS2                      0x1069
-#define HDMI_FC_AUDSCHNLS3                      0x106a
-#define HDMI_FC_AUDSCHNLS4                      0x106b
-#define HDMI_FC_AUDSCHNLS5                      0x106c
-#define HDMI_FC_AUDSCHNLS6                      0x106d
 #define HDMI_FC_AUDSCHNLS7                      0x106e
 #define HDMI_FC_AUDSCHNLS8                      0x106f
 #define HDMI_FC_DATACH0FILL                     0x1070
@@ -861,10 +854,6 @@ enum {
 	HDMI_FC_AVICONF3_QUANT_RANGE_LIMITED = 0x00,
 	HDMI_FC_AVICONF3_QUANT_RANGE_FULL = 0x04,
 
-/* HDMI_FC_GCP */
-	HDMI_FC_GCP_SET_AVMUTE = 0x2,
-	HDMI_FC_GCP_CLEAR_AVMUTE = 0x1,
-
 /* FC_DBGFORCE field values */
 	HDMI_FC_DBGFORCE_FORCEAUDIO = 0x10,
 	HDMI_FC_DBGFORCE_FORCEVIDEO = 0x1,
@@ -948,8 +937,6 @@ enum {
 	HDMI_AUD_CONF1_WIDTH_24 = 0x18,
 
 /* AUD_CONF2 filed values */
-	HDMI_AUD_CONF2_HBR = 0x1,
-	HDMI_AUD_CONF2_NLPCM = 0x2,
 	HDMI_AUD_CONF2_INSERT_PCUV = 0x04,
 
 /* AUD_CTS3 field values */
