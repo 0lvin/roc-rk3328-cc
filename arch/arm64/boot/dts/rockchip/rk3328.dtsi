@@ -620,23 +620,16 @@
 			#power-domain-cells = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			status = "okay";
 
 			pd_hevc@RK3328_PD_HEVC {
 				reg = <RK3328_PD_HEVC>;
 			};
 			pd_video@RK3328_PD_VIDEO {
 				reg = <RK3328_PD_VIDEO>;
-				clocks = <&cru ACLK_RKVDEC>,
-					 <&cru HCLK_RKVDEC>,
-					 <&cru SCLK_VDEC_CABAC>,
-					 <&cru SCLK_VDEC_CORE>;
-				pm_qos = <&qos_rkvdec_r>, <&qos_rkvdec_w>;
 			};
 			pd_vpu@RK3328_PD_VPU {
 				reg = <RK3328_PD_VPU>;
 				clocks = <&cru ACLK_VPU>, <&cru HCLK_VPU>;
-				pm_qos = <&qos_vpu>;
 			};
 		};
 
@@ -856,21 +849,6 @@
 							 <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 					contribution = <4096>;
 				};
-				map1 {
-					trip = <&target>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <4096>;
-				};
-				map2 {
-					trip = <&target>;
-					cooling-device = <&rkvdec THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <1024>;
-				};
-				map3 {
-					trip = <&target>;
-					cooling-device = <&dmc THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <1024>;
-				};
 			};
 		};
 
@@ -1062,62 +1040,6 @@
 		status = "disabled";
 	};
 
-	rkvdec: rkvdec@ff36000 {
-		compatible = "rockchip,rk3328-rkvdec", "rockchip,rkvdec";
-		reg = <0x0 0xff360000 0x0 0x400>;
-		interrupts = <GIC_SPI 7 IRQ_TYPE_LEVEL_HIGH>;
-		interrupt-names = "irq_dec";
-		clocks = <&cru ACLK_RKVDEC>, <&cru HCLK_RKVDEC>,
-			<&cru SCLK_VDEC_CABAC>, <&cru SCLK_VDEC_CORE>;
-		clock-names = "aclk_vcodec", "hclk_vcodec", "clk_cabac",
-			"clk_core";
-		resets = <&cru SRST_VDEC_A>, <&cru SRST_VDEC_H>,
-			<&cru SRST_VDEC_NIU_A>, <&cru SRST_VDEC_NIU_H>,
-			<&cru SRST_VDEC_CABAC>, <&cru SRST_VDEC_CORE>;
-		reset-names = "video_a", "video_h", "niu_a", "niu_h",
-			"video_cabac", "video_core";
-		rockchip,grf = <&grf>;
-		iommus = <&rkvdec_mmu>;
-		allocator = <1>;
-		power-domains = <&power RK3328_PD_VIDEO>;
-		operating-points-v2 = <&rkvdec_opp_table>;
-		#cooling-cells = <2>;
-		devfreq = <&dmc>;
-		status = "disabled";
-
-		vcodec_power_model: vcodec_power_model {
-			compatible = "vcodec_power_model";
-			dynamic-power-coefficient = <120>;
-			static-power-coefficient = <200>;
-			ts = <32000 4700 (-80) 2>;
-			thermal-zone = "soc-thermal";
-		};
-	};
-
-	rkvdec_opp_table: rkvdec-opp-table {
-		compatible = "operating-points-v2";
-
-		rockchip,leakage-voltage-sel = <
-			1   8     0
-			9   254   1
-		>;
-		nvmem-cells = <&logic_leakage>;
-		nvmem-cell-names = "rkvdec_leakage";
-
-		opp-100000000 {
-			opp-hz = /bits/ 64 <100000000>;
-			opp-microvolt = <975000>;
-		};
-		opp-200000000 {
-			opp-hz = /bits/ 64 <200000000>;
-			opp-microvolt = <975000>;
-		};
-		opp-500000000 {
-			opp-hz = /bits/ 64 <500000000>;
-			opp-microvolt = <1075000>;
-		};
-	};
-
 	rkvdec_mmu: iommu@ff360480 {
 		compatible = "rockchip,iommu";
 		reg = <0x0 0xff360480 0x0 0x40>, <0x0 0xff3604c0 0x0 0x40>;
@@ -1126,34 +1048,8 @@
 		clocks = <&cru ACLK_RKVDEC>, <&cru HCLK_RKVDEC>;
 		clock-names = "aclk", "iface";
 		#iommu-cells = <0>;
-		power-domains = <&power RK3328_PD_VIDEO>;
-	};
-
-	vepu: vepu@ff340000 {
-		compatible = "rockchip,rk3328-vepu", "rockchip,vepu";
-		rockchip,grf = <&grf>;
-		iommu_enabled = <1>;
-		iommus = <&vepu_mmu>;
-		reg = <0x0 0xff340000 0x0 0x400>;
-		interrupts = <GIC_SPI 97 IRQ_TYPE_LEVEL_HIGH>;
-		clocks = <&cru ACLK_H264>, <&cru HCLK_H264>,
-			<&cru SCLK_VENC_CORE>;
-		clock-names = "aclk_vcodec", "hclk_vcodec",
-			"clk_core";
-		resets = <&cru SRST_RKVENC_H264_H>,
-			<&cru SRST_RKVENC_H264_A>;
-		reset-names = "video_h", "video_a";
-		rockchip,srv = <&venc_srv>;
-		mode_bit = <11>;
-		mode_ctrl = <0x40c>;
-		name = "vepu";
-		allocator = <1>;
-		power-domains = <&power RK3328_PD_HEVC>;
 		status = "disabled";
-	};
-
-	venc_srv: venc_srv {
-		compatible = "rockchip,mpp_service";
+		power-domains = <&power RK3328_PD_VIDEO>;
 	};
 
 	vop: vop@ff370000 {
@@ -1603,16 +1499,6 @@
 			snps,dis-tx-ipgap-linecheck-quirk;
 			status = "disabled";
 		};
-	};
-
-	qos_rkvdec_r: qos@ff750000 {
-		compatible = "syscon";
-		reg = <0x0 0xff750000 0x0 0x20>;
-	};
-
-	qos_rkvdec_w: qos@ff750080 {
-		compatible = "syscon";
-		reg = <0x0 0xff750080 0x0 0x20>;
 	};
 
 	qos_vpu: qos@ff778000 {
