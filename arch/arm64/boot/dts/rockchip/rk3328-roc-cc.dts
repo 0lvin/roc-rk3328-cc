@@ -5,8 +5,6 @@
 
 /dts-v1/;
 #include "rk3328.dtsi"
-#include <dt-bindings/clock/rockchip-ddr.h>
-#include <dt-bindings/memory/rk3328-dram.h>
 
 / {
 	model = "Firefly roc-rk3328-cc";

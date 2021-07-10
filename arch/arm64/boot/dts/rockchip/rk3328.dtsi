@@ -12,8 +12,6 @@
 #include <dt-bindings/soc/rockchip,boot-mode.h>
 #include <dt-bindings/thermal/thermal.h>
 #include <dt-bindings/soc/rockchip-system-status.h>
-#include <dt-bindings/clock/rockchip-ddr.h>
-#include <dt-bindings/memory/rk3328-dram.h>
 
 / {
 	compatible = "rockchip,rk3328";
