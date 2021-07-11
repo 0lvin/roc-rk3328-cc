@@ -141,13 +141,6 @@
 			default-state = "off";
 			mode = <0x05>;
 		};
-
-		ir {
-			status = "disabled";
-			linux,default-trigger = "ir";
-			default-state = "off";
-			mode = <0x00>;
-		};
 	};
 };
 
