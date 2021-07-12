@@ -593,7 +593,7 @@ static int rk808_probe(struct i2c_client *client,
 	u8 on_source = 0, off_source = 0;
 	unsigned int on, off;
 	int nr_cells;
-	int pm_off = 0, msb, lsb;
+	int msb, lsb;
 	unsigned char pmic_id_msb, pmic_id_lsb;
 	int ret;
 	int i;
@@ -744,9 +744,7 @@ static int rk808_probe(struct i2c_client *client,
 		goto err_irq;
 	}
 
-	pm_off = of_property_read_bool(np,
-				"rockchip,system-power-controller");
-	if (pm_off) {
+	if (of_property_read_bool(np, "rockchip,system-power-controller")) {
 		if (rk808->pm_pwroff_prep_fn) {
 			pm_power_off_prepare = rk808_device_shutdown_prepare;
 		}
