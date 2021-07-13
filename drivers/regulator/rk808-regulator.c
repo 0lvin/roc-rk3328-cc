@@ -165,45 +165,44 @@ static const int rk808_buck_config_regs[] = {
 	RK808_BUCK4_CONFIG_REG,
 };
 
-
-static const struct regulator_linear_range rk805_buck_voltage_ranges[] = {
+static const struct linear_range rk805_buck_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),	/* 0.7125v - 1.45v */
 	REGULATOR_LINEAR_RANGE(1800000, 60, 62, 200000),/* 1.8v - 2.2v */
 	REGULATOR_LINEAR_RANGE(2300000, 63, 63, 0),	/* 2.3v - 2.3v */
 };
 
-static const struct regulator_linear_range rk805_buck4_voltage_ranges[] = {
+static const struct linear_range rk805_buck4_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4 */
 	REGULATOR_LINEAR_RANGE(3500000, 27, 31, 0),	/* 3.5v */
 };
 
-static const struct regulator_linear_range rk805_ldo_voltage_ranges[] = {
+static const struct linear_range rk805_ldo_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4 */
 };
 
 /* rk818 */
-static const struct regulator_linear_range rk818_buck_voltage_ranges[] = {
+static const struct linear_range rk818_buck_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(712500, 0, 63, 12500),
 };
 
-static const struct regulator_linear_range rk818_buck4_voltage_ranges[] = {
+static const struct linear_range rk818_buck4_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(1800000, 0, 15, 100000),
 };
 
-static const struct regulator_linear_range rk818_ldo_voltage_ranges[] = {
+static const struct linear_range rk818_ldo_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(1800000, 0, 16, 100000),
 };
 
-static const struct regulator_linear_range rk808_ldo3_voltage_ranges[] = {
+static const struct linear_range rk808_ldo3_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(800000, 0, 13, 100000),
 	REGULATOR_LINEAR_RANGE(2500000, 15, 15, 0),
 };
 
-static const struct regulator_linear_range rk818_ldo6_voltage_ranges[] = {
+static const struct linear_range rk818_ldo6_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(800000, 0, 17, 100000),
 };
 
-static const struct regulator_linear_range rk818_boost_voltage_ranges[] = {
+static const struct linear_range rk818_boost_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(4700000, 0, 7, 100000),
 };
 
