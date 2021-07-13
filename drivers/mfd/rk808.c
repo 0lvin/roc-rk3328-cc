@@ -21,7 +21,6 @@
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/regmap.h>
-#include <linux/syscore_ops.h>
 
 #define RK818_ON_SOURCE_REG            0xae
 #define RK818_OFF_SOURCE_REG           0xaf
@@ -532,18 +531,19 @@ static void rk808_device_shutdown_prepare(void)
 	}
 }
 
-static void rk808_syscore_shutdown(void)
+static void rk8xx_shutdown(struct i2c_client *client)
 {
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
+	struct rk808 *rk808 = i2c_get_clientdata(client);
+ 	int ret;
 
 	if (!rk808)
 		return;
 
 	/* close rtc int when power off */
-	regmap_update_bits(rk808->regmap,
+	ret = regmap_update_bits(rk808->regmap,
 			   RK808_INT_STS_MSK_REG1,
 			   (0x3 << 5), (0x3 << 5));
-	regmap_update_bits(rk808->regmap,
+	ret = regmap_update_bits(rk808->regmap,
 			   RK808_RTC_INT_REG,
 			   (0x3 << 2), (0x0 << 2));
 	/*
@@ -566,11 +566,10 @@ static void rk808_syscore_shutdown(void)
 				;
 		}
 	}
+	if (ret)
+		dev_warn(&client->dev,
+			 "Cannot switch to power down function\n");
 }
-
-static struct syscore_ops rk808_syscore_ops = {
-	.shutdown = rk808_syscore_shutdown,
-};
 
 static const struct of_device_id rk808_of_match[] = {
 	{ .compatible = "rockchip,rk805" },
@@ -677,7 +676,6 @@ static int rk808_probe(struct i2c_client *client,
 		nr_pre_init_regs = ARRAY_SIZE(rk817_pre_init_reg);
 		cells = rk817s;
 		nr_cells = ARRAY_SIZE(rk817s);
-		register_syscore_ops(&rk808_syscore_ops);
 		break;
 	default:
 		dev_err(&client->dev, "Unsupported RK8XX ID %lu\n",
@@ -748,9 +746,6 @@ static int rk808_probe(struct i2c_client *client,
 		if (rk808->pm_pwroff_prep_fn) {
 			pm_power_off_prepare = rk808_device_shutdown_prepare;
 		}
-		if (rk808->pm_pwroff_fn) {
-			register_syscore_ops(&rk808_syscore_ops);
-		}
 	}
 
 	return 0;
@@ -768,8 +763,6 @@ static int rk808_remove(struct i2c_client *client)
 
 	if (pm_power_off_prepare == rk808_device_shutdown_prepare)
 		pm_power_off_prepare = NULL;
-	if (rk808->pm_pwroff_fn)
-		unregister_syscore_ops(&rk808_syscore_ops);
 
 	return 0;
 }
@@ -825,6 +818,7 @@ static struct i2c_driver rk808_i2c_driver = {
 	},
 	.probe    = rk808_probe,
 	.remove   = rk808_remove,
+	.shutdown = rk8xx_shutdown,
 };
 
 module_i2c_driver(rk808_i2c_driver);
