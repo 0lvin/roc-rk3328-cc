@@ -450,37 +450,6 @@ static const struct regmap_irq_chip rk818_irq_chip = {
 
 static struct i2c_client *rk808_i2c_client;
 
-static void rk808_device_shutdown(void)
-{
-	int ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	if (!rk808)
-		return;
-
-	ret = regmap_update_bits(rk808->regmap,
-				 RK808_DEVCTRL_REG,
-				 DEV_OFF_RST, DEV_OFF_RST);
-
-	if (ret)
-		dev_err(&rk808_i2c_client->dev, "Failed to shutdown device!\n");
-}
-
-static void rk818_device_shutdown(void)
-{
-	int ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	if (!rk808)
-		return;
-
-	ret = regmap_update_bits(rk808->regmap,
-				 RK818_DEVCTRL_REG,
-				 DEV_OFF, DEV_OFF);
-	if (ret)
-		dev_err(&rk808_i2c_client->dev, "Failed to shutdown device!\n");
-}
-
 static void rk805_device_shutdown_prepare(void)
 {
 	int ret;
@@ -531,6 +500,33 @@ static void rk808_device_shutdown_prepare(void)
 	}
 }
 
+static void rk808_pm_power_off(void)
+{
+	int ret;
+	unsigned int reg, bit;
+	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
+
+	switch (rk808->variant) {
+	case RK805_ID:
+		reg = RK805_DEV_CTRL_REG;
+		bit = DEV_OFF;
+		break;
+	case RK808_ID:
+		reg = RK808_DEVCTRL_REG,
+		bit = DEV_OFF_RST;
+		break;
+	case RK818_ID:
+		reg = RK818_DEVCTRL_REG;
+		bit = DEV_OFF;
+		break;
+	default:
+		return;
+	}
+	ret = regmap_update_bits(rk808->regmap, reg, bit, bit);
+	if (ret)
+		dev_err(&rk808_i2c_client->dev, "Failed to shutdown device!\n");
+}
+
 static void rk8xx_shutdown(struct i2c_client *client)
 {
 	struct rk808 *rk808 = i2c_get_clientdata(client);
@@ -556,15 +552,13 @@ static void rk8xx_shutdown(struct i2c_client *client)
 	 */
 	if (system_state == SYSTEM_POWER_OFF) {
 		/* power off supplies ! */
-		if (rk808->pm_pwroff_fn) {
-			dev_info(&rk808_i2c_client->dev, "System power off\n");
-			rk808->pm_pwroff_fn();
-			mdelay(10);
-			dev_info(&rk808_i2c_client->dev,
-				 "Cpu should never reach here, stop!\n");
-			while (1)
-				;
-		}
+		dev_info(&rk808_i2c_client->dev, "System power off\n");
+		rk808_pm_power_off();
+		mdelay(10);
+		dev_info(&rk808_i2c_client->dev,
+			 "Cpu should never reach here, stop!\n");
+		while (1)
+			;
 	}
 	if (ret)
 		dev_warn(&client->dev,
@@ -651,7 +645,6 @@ static int rk808_probe(struct i2c_client *client,
 		nr_pre_init_regs = ARRAY_SIZE(rk808_pre_init_reg);
 		cells = rk808s;
 		nr_cells = ARRAY_SIZE(rk808s);
-		rk808->pm_pwroff_fn = rk808_device_shutdown;
 		break;
 	case RK818_ID:
 		rk808->regmap_cfg = &rk818_regmap_config;
@@ -660,7 +653,6 @@ static int rk808_probe(struct i2c_client *client,
 		nr_pre_init_regs = ARRAY_SIZE(rk818_pre_init_reg);
 		cells = rk818s;
 		nr_cells = ARRAY_SIZE(rk818s);
-		rk808->pm_pwroff_fn = rk818_device_shutdown;
 		on_source = RK818_ON_SOURCE_REG;
 		off_source = RK818_OFF_SOURCE_REG;
 		suspend_reg = rk818_suspend_reg;
@@ -746,6 +738,10 @@ static int rk808_probe(struct i2c_client *client,
 		if (rk808->pm_pwroff_prep_fn) {
 			pm_power_off_prepare = rk808_device_shutdown_prepare;
 		}
+
+		rk808_i2c_client = client;
+		pm_power_off = rk808_pm_power_off;
+		pm_power_off_prepare = rk808->pm_pwroff_prep_fn;
 	}
 
 	return 0;
@@ -763,6 +759,13 @@ static int rk808_remove(struct i2c_client *client)
 
 	if (pm_power_off_prepare == rk808_device_shutdown_prepare)
 		pm_power_off_prepare = NULL;
+
+	/**
+	 * pm_power_off may points to a function from another module.
+	 * Check if the pointer is set by us and only then overwrite it.
+	 */
+	if (pm_power_off == rk808_pm_power_off)
+		pm_power_off = NULL;
 
 	return 0;
 }
