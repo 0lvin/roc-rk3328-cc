@@ -5062,7 +5062,7 @@ F:	drivers/dma-buf/
 F:	include/linux/*fence.h
 F:	include/linux/dma-buf*
 F:	include/linux/dma-resv.h
-K:	dma_(buf|fence|resv)
+K:	\bdma_(?:buf|fence|resv)\b
 
 DMA GENERIC OFFLOAD ENGINE SUBSYSTEM
 M:	Vinod Koul <vkoul@kernel.org>
