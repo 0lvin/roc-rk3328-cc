@@ -570,6 +570,7 @@ static const struct of_device_id rockchip_i2s_match[] = {
 	{ .compatible = "rockchip,rk3066-i2s", },
 	{ .compatible = "rockchip,rk3188-i2s", },
 	{ .compatible = "rockchip,rk3288-i2s", },
+	{ .compatible = "rockchip,rk3328-i2s", },
 	{ .compatible = "rockchip,rk3399-i2s", .data = &rk3399_i2s_pins },
 	{},
 };
@@ -674,7 +675,10 @@ static int rockchip_i2s_probe(struct platform_device *pdev)
 		goto err_suspend;
 	}
 
+	/* FIXME:rk3328cc
 	ret = rockchip_pcm_platform_register(&pdev->dev);
+	*/
+	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
 	if (ret) {
 		dev_err(&pdev->dev, "Could not register PCM\n");
 		goto err_suspend;
