@@ -126,33 +126,6 @@ static int rockchip_get_volt_sel(struct device_node *np, char *name,
 	return ret;
 }
 
-int rockchip_of_get_lkg_scale_sel(struct device *dev, char *name)
-{
-	struct device_node *np;
-	int leakage, volt_sel;
-	int ret;
-
-	np = of_parse_phandle(dev->of_node, "operating-points-v2", 0);
-	if (!np) {
-		dev_warn(dev, "OPP-v2 not supported\n");
-		return -ENOENT;
-	}
-
-	ret = rockchip_get_efuse_value(np, name, &leakage);
-	if (!ret) {
-		dev_info(dev, "%s=%d\n", name, leakage);
-		ret = rockchip_get_volt_sel(np, "rockchip,leakage-scaling-sel",
-					    leakage, &volt_sel);
-		if (!ret) {
-			dev_info(dev, "%s-scale-sel=%d\n", name, volt_sel);
-			return volt_sel;
-		}
-	}
-
-	return ret;
-}
-EXPORT_SYMBOL(rockchip_of_get_lkg_scale_sel);
-
 int rockchip_of_get_lkg_volt_sel(struct device *dev, char *name)
 {
 	struct device_node *np;

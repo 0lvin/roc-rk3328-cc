@@ -112,6 +112,8 @@
  *	6) Eventually, the free function will be called.
  */
 
+#define IWL_TRANS_FW_DBG_DOMAIN(trans)	IWL_FW_INI_DOMAIN_ALWAYS_ON
+
 #define FH_RSCSR_FRAME_SIZE_MSK		0x00003FFF	/* bits 0-13 */
 #define FH_RSCSR_FRAME_INVALID		0x55550000
 #define FH_RSCSR_FRAME_ALIGN		0x40
@@ -191,6 +193,18 @@ struct iwl_device_cmd {
 					sizeof(struct iwl_cmd_header)];
 		};
 	};
+} __packed;
+
+/**
+ * struct iwl_device_tx_cmd - buffer for TX command
+ * @hdr: the header
+ * @payload: the payload placeholder
+ *
+ * The actual structure is sized dynamically according to need.
+ */
+struct iwl_device_tx_cmd {
+	struct iwl_cmd_header hdr;
+	u8 payload[];
 } __packed;
 
 #define TFD_MAX_PAYLOAD_SIZE (sizeof(struct iwl_device_cmd))
@@ -358,6 +372,24 @@ iwl_trans_get_rb_size_order(enum iwl_amsdu_size rb_size)
 	}
 }
 
+static inline int
+iwl_trans_get_rb_size(enum iwl_amsdu_size rb_size)
+{
+	switch (rb_size) {
+	case IWL_AMSDU_2K:
+		return 2 * 1024;
+	case IWL_AMSDU_4K:
+		return 4 * 1024;
+	case IWL_AMSDU_8K:
+		return 8 * 1024;
+	case IWL_AMSDU_12K:
+		return 12 * 1024;
+	default:
+		WARN_ON(1);
+		return 0;
+	}
+}
+
 struct iwl_hcmd_names {
 	u8 cmd_id;
 	const char *const cmd_name;
@@ -512,6 +544,8 @@ struct iwl_trans_rxq_dma_data {
  * @read_mem: read device's SRAM in DWORD
  * @write_mem: write device's SRAM in DWORD. If %buf is %NULL, then the memory
  *	will be zeroed.
+ * @read_config32: read a u32 value from the device's config space at
+ *	the given offset.
  * @configure: configure parameters required by the transport layer from
  *	the op_mode. May be called several times before start_fw, can't be
  *	called after that.
@@ -544,7 +578,7 @@ struct iwl_trans_ops {
 	int (*send_cmd)(struct iwl_trans *trans, struct iwl_host_cmd *cmd);
 
 	int (*tx)(struct iwl_trans *trans, struct sk_buff *skb,
-		  struct iwl_device_cmd *dev_cmd, int queue);
+		  struct iwl_device_tx_cmd *dev_cmd, int queue);
 	void (*reclaim)(struct iwl_trans *trans, int queue, int ssn,
 			struct sk_buff_head *skbs);
 
@@ -582,6 +616,7 @@ struct iwl_trans_ops {
 			void *buf, int dwords);
 	int (*write_mem)(struct iwl_trans *trans, u32 addr,
 			 const void *buf, int dwords);
+	int (*read_config32)(struct iwl_trans *trans, u32 ofs, u32 *val);
 	void (*configure)(struct iwl_trans *trans,
 			  const struct iwl_trans_config *trans_cfg);
 	void (*set_pmi)(struct iwl_trans *trans, bool state);
@@ -760,6 +795,132 @@ struct iwl_trans_debug {
 	u32 domains_bitmap;
 };
 
+struct iwl_dma_ptr {
+	dma_addr_t dma;
+	void *addr;
+	size_t size;
+};
+
+struct iwl_cmd_meta {
+	/* only for SYNC commands, iff the reply skb is wanted */
+	struct iwl_host_cmd *source;
+	u32 flags;
+	u32 tbs;
+};
+
+/*
+ * The FH will write back to the first TB only, so we need to copy some data
+ * into the buffer regardless of whether it should be mapped or not.
+ * This indicates how big the first TB must be to include the scratch buffer
+ * and the assigned PN.
+ * Since PN location is 8 bytes at offset 12, it's 20 now.
+ * If we make it bigger then allocations will be bigger and copy slower, so
+ * that's probably not useful.
+ */
+#define IWL_FIRST_TB_SIZE	20
+#define IWL_FIRST_TB_SIZE_ALIGN ALIGN(IWL_FIRST_TB_SIZE, 64)
+
+struct iwl_pcie_txq_entry {
+	void *cmd;
+	struct sk_buff *skb;
+	/* buffer to free after command completes */
+	const void *free_buf;
+	struct iwl_cmd_meta meta;
+};
+
+struct iwl_pcie_first_tb_buf {
+	u8 buf[IWL_FIRST_TB_SIZE_ALIGN];
+};
+
+/**
+ * struct iwl_txq - Tx Queue for DMA
+ * @q: generic Rx/Tx queue descriptor
+ * @tfds: transmit frame descriptors (DMA memory)
+ * @first_tb_bufs: start of command headers, including scratch buffers, for
+ *	the writeback -- this is DMA memory and an array holding one buffer
+ *	for each command on the queue
+ * @first_tb_dma: DMA address for the first_tb_bufs start
+ * @entries: transmit entries (driver state)
+ * @lock: queue lock
+ * @stuck_timer: timer that fires if queue gets stuck
+ * @trans: pointer back to transport (for timer)
+ * @need_update: indicates need to update read/write index
+ * @ampdu: true if this queue is an ampdu queue for an specific RA/TID
+ * @wd_timeout: queue watchdog timeout (jiffies) - per queue
+ * @frozen: tx stuck queue timer is frozen
+ * @frozen_expiry_remainder: remember how long until the timer fires
+ * @bc_tbl: byte count table of the queue (relevant only for gen2 transport)
+ * @write_ptr: 1-st empty entry (index) host_w
+ * @read_ptr: last used entry (index) host_r
+ * @dma_addr:  physical addr for BD's
+ * @n_window: safe queue window
+ * @id: queue id
+ * @low_mark: low watermark, resume queue if free space more than this
+ * @high_mark: high watermark, stop queue if free space less than this
+ *
+ * A Tx queue consists of circular buffer of BDs (a.k.a. TFDs, transmit frame
+ * descriptors) and required locking structures.
+ *
+ * Note the difference between TFD_QUEUE_SIZE_MAX and n_window: the hardware
+ * always assumes 256 descriptors, so TFD_QUEUE_SIZE_MAX is always 256 (unless
+ * there might be HW changes in the future). For the normal TX
+ * queues, n_window, which is the size of the software queue data
+ * is also 256; however, for the command queue, n_window is only
+ * 32 since we don't need so many commands pending. Since the HW
+ * still uses 256 BDs for DMA though, TFD_QUEUE_SIZE_MAX stays 256.
+ * This means that we end up with the following:
+ *  HW entries: | 0 | ... | N * 32 | ... | N * 32 + 31 | ... | 255 |
+ *  SW entries:           | 0      | ... | 31          |
+ * where N is a number between 0 and 7. This means that the SW
+ * data is a window overlayed over the HW queue.
+ */
+struct iwl_txq {
+	void *tfds;
+	struct iwl_pcie_first_tb_buf *first_tb_bufs;
+	dma_addr_t first_tb_dma;
+	struct iwl_pcie_txq_entry *entries;
+	/* lock for syncing changes on the queue */
+	spinlock_t lock;
+	unsigned long frozen_expiry_remainder;
+	struct timer_list stuck_timer;
+	struct iwl_trans *trans;
+	bool need_update;
+	bool frozen;
+	bool ampdu;
+	int block;
+	unsigned long wd_timeout;
+	struct sk_buff_head overflow_q;
+	struct iwl_dma_ptr bc_tbl;
+
+	int write_ptr;
+	int read_ptr;
+	dma_addr_t dma_addr;
+	int n_window;
+	u32 id;
+	int low_mark;
+	int high_mark;
+
+	bool overflow_tx;
+};
+
+/**
+ * struct iwl_trans_txqs - transport tx queues data
+ *
+ * @queue_used - bit mask of used queues
+ * @queue_stopped - bit mask of stopped queues
+ */
+struct iwl_trans_txqs {
+	unsigned long queue_used[BITS_TO_LONGS(IWL_MAX_TVQM_QUEUES)];
+	unsigned long queue_stopped[BITS_TO_LONGS(IWL_MAX_TVQM_QUEUES)];
+	struct iwl_txq *txq[IWL_MAX_TVQM_QUEUES];
+	struct {
+		u8 fifo;
+		u8 q_id;
+		unsigned int wdg_timeout;
+	} cmd;
+
+};
+
 /**
  * struct iwl_trans - transport common data
  *
@@ -793,6 +954,7 @@ struct iwl_trans_debug {
  * @system_pm_mode: the system-wide power management mode in use.
  *	This mode is set dynamically, depending on the WoWLAN values
  *	configured from the userspace at runtime.
+ * @iwl_trans_txqs: transport tx queues data.
  */
 struct iwl_trans {
 	const struct iwl_trans_ops *ops;
@@ -838,6 +1000,9 @@ struct iwl_trans {
 	struct iwl_self_init_dram init_dram;
 
 	enum iwl_plat_pm_mode system_pm_mode;
+
+	const char *name;
+	struct iwl_trans_txqs txqs;
 
 	/* pointer to trans specific struct */
 	/*Ensure that this pointer will always be aligned to sizeof pointer */
@@ -948,22 +1113,22 @@ iwl_trans_dump_data(struct iwl_trans *trans, u32 dump_mask)
 	return trans->ops->dump_data(trans, dump_mask);
 }
 
-static inline struct iwl_device_cmd *
+static inline struct iwl_device_tx_cmd *
 iwl_trans_alloc_tx_cmd(struct iwl_trans *trans)
 {
-	return kmem_cache_alloc(trans->dev_cmd_pool, GFP_ATOMIC);
+	return kmem_cache_zalloc(trans->dev_cmd_pool, GFP_ATOMIC);
 }
 
 int iwl_trans_send_cmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd);
 
 static inline void iwl_trans_free_tx_cmd(struct iwl_trans *trans,
-					 struct iwl_device_cmd *dev_cmd)
+					 struct iwl_device_tx_cmd *dev_cmd)
 {
 	kmem_cache_free(trans->dev_cmd_pool, dev_cmd);
 }
 
 static inline int iwl_trans_tx(struct iwl_trans *trans, struct sk_buff *skb,
-			       struct iwl_device_cmd *dev_cmd, int queue)
+			       struct iwl_device_tx_cmd *dev_cmd, int queue)
 {
 	if (unlikely(test_bit(STATUS_FW_ERROR, &trans->status)))
 		return -EIO;
@@ -1271,7 +1436,9 @@ static inline bool iwl_trans_dbg_ini_valid(struct iwl_trans *trans)
  *****************************************************/
 struct iwl_trans *iwl_trans_alloc(unsigned int priv_size,
 				  struct device *dev,
-				  const struct iwl_trans_ops *ops);
+				  const struct iwl_trans_ops *ops,
+				  unsigned int cmd_pool_size,
+				  unsigned int cmd_pool_align);
 void iwl_trans_free(struct iwl_trans *trans);
 
 /*****************************************************

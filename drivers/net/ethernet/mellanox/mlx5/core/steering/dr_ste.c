@@ -112,7 +112,7 @@ static u32 dr_ste_crc32_calc(const void *input_data, size_t length)
 {
 	u32 crc = crc32(0, input_data, length);
 
-	return htonl(crc);
+	return (__force u32)htonl(crc);
 }
 
 u32 mlx5dr_ste_calc_hash_index(u8 *hw_ste_p, struct mlx5dr_ste_htbl *htbl)
@@ -348,7 +348,7 @@ static void dr_ste_replace(struct mlx5dr_ste *dst, struct mlx5dr_ste *src)
 	if (dst->next_htbl)
 		dst->next_htbl->pointing_ste = dst;
 
-	refcount_set(&dst->refcount, refcount_read(&src->refcount));
+	dst->refcount = src->refcount;
 
 	INIT_LIST_HEAD(&dst->rule_list);
 	list_splice_tail_init(&src->rule_list, &dst->rule_list);
@@ -565,7 +565,7 @@ bool mlx5dr_ste_is_not_valid_entry(u8 *p_hw_ste)
 
 bool mlx5dr_ste_not_used_ste(struct mlx5dr_ste *ste)
 {
-	return !refcount_read(&ste->refcount);
+	return !ste->refcount;
 }
 
 /* Init one ste as a pattern for ste data array */
@@ -689,14 +689,14 @@ struct mlx5dr_ste_htbl *mlx5dr_ste_htbl_alloc(struct mlx5dr_icm_pool *pool,
 	htbl->ste_arr = chunk->ste_arr;
 	htbl->hw_ste_arr = chunk->hw_ste_arr;
 	htbl->miss_list = chunk->miss_list;
-	refcount_set(&htbl->refcount, 0);
+	htbl->refcount = 0;
 
 	for (i = 0; i < chunk->num_of_entries; i++) {
 		struct mlx5dr_ste *ste = &htbl->ste_arr[i];
 
 		ste->hw_ste = htbl->hw_ste_arr + i * DR_STE_SIZE_REDUCED;
 		ste->htbl = htbl;
-		refcount_set(&ste->refcount, 0);
+		ste->refcount = 0;
 		INIT_LIST_HEAD(&ste->miss_list_node);
 		INIT_LIST_HEAD(&htbl->miss_list[i]);
 		INIT_LIST_HEAD(&ste->rule_list);
@@ -713,7 +713,7 @@ out_free_htbl:
 
 int mlx5dr_ste_htbl_free(struct mlx5dr_ste_htbl *htbl)
 {
-	if (refcount_read(&htbl->refcount))
+	if (htbl->refcount)
 		return -EBUSY;
 
 	mlx5dr_icm_free_chunk(htbl->chunk);
@@ -728,7 +728,7 @@ int mlx5dr_ste_build_pre_check(struct mlx5dr_domain *dmn,
 {
 	if (!value && (match_criteria & DR_MATCHER_CRITERIA_MISC)) {
 		if (mask->misc.source_port && mask->misc.source_port != 0xffff) {
-			mlx5dr_dbg(dmn, "Partial mask source_port is not supported\n");
+			mlx5dr_err(dmn, "Partial mask source_port is not supported\n");
 			return -EINVAL;
 		}
 	}
@@ -869,7 +869,7 @@ static void dr_ste_copy_mask_misc(char *mask, struct mlx5dr_match_misc *spec)
 
 static void dr_ste_copy_mask_spec(char *mask, struct mlx5dr_match_spec *spec)
 {
-	u32 raw_ip[4];
+	__be32 raw_ip[4];
 
 	spec->smac_47_16 = MLX5_GET(fte_match_set_lyr_2_4, mask, smac_47_16);
 
@@ -961,7 +961,6 @@ static void dr_ste_copy_mask_misc2(char *mask, struct mlx5dr_match_misc2 *spec)
 	spec->metadata_reg_c_1 = MLX5_GET(fte_match_set_misc2, mask, metadata_reg_c_1);
 	spec->metadata_reg_c_0 = MLX5_GET(fte_match_set_misc2, mask, metadata_reg_c_0);
 	spec->metadata_reg_a = MLX5_GET(fte_match_set_misc2, mask, metadata_reg_a);
-	spec->metadata_reg_b = MLX5_GET(fte_match_set_misc2, mask, metadata_reg_b);
 }
 
 static void dr_ste_copy_mask_misc3(char *mask, struct mlx5dr_match_misc3 *spec)
@@ -2307,7 +2306,9 @@ static int dr_ste_build_src_gvmi_qpn_tag(struct mlx5dr_match_param *value,
 	struct mlx5dr_cmd_vport_cap *vport_cap;
 	struct mlx5dr_domain *dmn = sb->dmn;
 	struct mlx5dr_cmd_caps *caps;
+	u8 *bit_mask = sb->bit_mask;
 	u8 *tag = hw_ste->tag;
+	bool source_gvmi_set;
 
 	DR_STE_SET_TAG(src_gvmi_qp, tag, source_qp, misc, source_sqn);
 
@@ -2328,7 +2329,8 @@ static int dr_ste_build_src_gvmi_qpn_tag(struct mlx5dr_match_param *value,
 	if (!vport_cap)
 		return -EINVAL;
 
-	if (vport_cap->vport_gvmi)
+	source_gvmi_set = MLX5_GET(ste_src_gvmi_qp, bit_mask, source_gvmi);
+	if (vport_cap->vport_gvmi && source_gvmi_set)
 		MLX5_SET(ste_src_gvmi_qp, tag, source_gvmi, vport_cap->vport_gvmi);
 
 	misc->source_eswitch_owner_vhca_id = 0;

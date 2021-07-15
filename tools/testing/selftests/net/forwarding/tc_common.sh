@@ -3,16 +3,17 @@
 
 CHECK_TC="yes"
 
+# Can be overridden by the configuration file. See lib.sh
+TC_HIT_TIMEOUT=${TC_HIT_TIMEOUT:=1000} # ms
+
 tc_check_packets()
 {
 	local id=$1
 	local handle=$2
 	local count=$3
 
-	cmd_jq "tc -j -s filter show $id" \
-	       ".[] | select(.options.handle == $handle) | \
-	              select(.options.actions[0].stats.packets == $count)" \
-	       &> /dev/null
+	busywait "$TC_HIT_TIMEOUT" until_counter_is "== $count" \
+		 tc_rule_handle_stats_get "$id" "$handle" > /dev/null
 }
 
 tc_check_packets_hitting()
@@ -20,8 +21,6 @@ tc_check_packets_hitting()
 	local id=$1
 	local handle=$2
 
-	cmd_jq "tc -j -s filter show $id" \
-	       ".[] | select(.options.handle == $handle) | \
-		      select(.options.actions[0].stats.packets > 0)" \
-	       &> /dev/null
+	busywait "$TC_HIT_TIMEOUT" until_counter_is "> 0" \
+		 tc_rule_handle_stats_get "$id" "$handle" > /dev/null
 }

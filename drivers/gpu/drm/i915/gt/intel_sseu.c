@@ -8,6 +8,19 @@
 #include "intel_lrc_reg.h"
 #include "intel_sseu.h"
 
+void intel_sseu_set_info(struct sseu_dev_info *sseu, u8 max_slices,
+			 u8 max_subslices, u8 max_eus_per_subslice)
+{
+	sseu->max_slices = max_slices;
+	sseu->max_subslices = max_subslices;
+	sseu->max_eus_per_subslice = max_eus_per_subslice;
+
+	sseu->ss_stride = GEN_SSEU_STRIDE(sseu->max_subslices);
+	GEM_BUG_ON(sseu->ss_stride > GEN_MAX_SUBSLICE_STRIDE);
+	sseu->eu_stride = GEN_SSEU_STRIDE(sseu->max_eus_per_subslice);
+	GEM_BUG_ON(sseu->eu_stride > GEN_MAX_EU_STRIDE);
+}
+
 unsigned int
 intel_sseu_subslice_total(const struct sseu_dev_info *sseu)
 {
@@ -19,10 +32,32 @@ intel_sseu_subslice_total(const struct sseu_dev_info *sseu)
 	return total;
 }
 
+u32 intel_sseu_get_subslices(const struct sseu_dev_info *sseu, u8 slice)
+{
+	int i, offset = slice * sseu->ss_stride;
+	u32 mask = 0;
+
+	GEM_BUG_ON(slice >= sseu->max_slices);
+
+	for (i = 0; i < sseu->ss_stride; i++)
+		mask |= (u32)sseu->subslice_mask[offset + i] <<
+			i * BITS_PER_BYTE;
+
+	return mask;
+}
+
+void intel_sseu_set_subslices(struct sseu_dev_info *sseu, int slice,
+			      u32 ss_mask)
+{
+	int offset = slice * sseu->ss_stride;
+
+	memcpy(&sseu->subslice_mask[offset], &ss_mask, sseu->ss_stride);
+}
+
 unsigned int
 intel_sseu_subslices_per_slice(const struct sseu_dev_info *sseu, u8 slice)
 {
-	return hweight8(sseu->subslice_mask[slice]);
+	return hweight32(intel_sseu_get_subslices(sseu, slice));
 }
 
 u32 intel_sseu_make_rpcs(struct drm_i915_private *i915,
@@ -30,7 +65,6 @@ u32 intel_sseu_make_rpcs(struct drm_i915_private *i915,
 {
 	const struct sseu_dev_info *sseu = &RUNTIME_INFO(i915)->sseu;
 	bool subslice_pg = sseu->has_subslice_pg;
-	struct intel_sseu ctx_sseu;
 	u8 slices, subslices;
 	u32 rpcs = 0;
 
@@ -43,31 +77,13 @@ u32 intel_sseu_make_rpcs(struct drm_i915_private *i915,
 
 	/*
 	 * If i915/perf is active, we want a stable powergating configuration
-	 * on the system.
-	 *
-	 * We could choose full enablement, but on ICL we know there are use
-	 * cases which disable slices for functional, apart for performance
-	 * reasons. So in this case we select a known stable subset.
+	 * on the system. Use the configuration pinned by i915/perf.
 	 */
-	if (!i915->perf.exclusive_stream) {
-		ctx_sseu = *req_sseu;
-	} else {
-		ctx_sseu = intel_sseu_from_device_info(sseu);
+	if (i915->perf.exclusive_stream)
+		req_sseu = &i915->perf.sseu;
 
-		if (IS_GEN(i915, 11)) {
-			/*
-			 * We only need subslice count so it doesn't matter
-			 * which ones we select - just turn off low bits in the
-			 * amount of half of all available subslices per slice.
-			 */
-			ctx_sseu.subslice_mask =
-				~(~0 << (hweight8(ctx_sseu.subslice_mask) / 2));
-			ctx_sseu.slice_mask = 0x1;
-		}
-	}
-
-	slices = hweight8(ctx_sseu.slice_mask);
-	subslices = hweight8(ctx_sseu.subslice_mask);
+	slices = hweight8(req_sseu->slice_mask);
+	subslices = hweight8(req_sseu->subslice_mask);
 
 	/*
 	 * Since the SScount bitfield in GEN8_R_PWR_CLK_STATE is only three bits
@@ -140,13 +156,13 @@ u32 intel_sseu_make_rpcs(struct drm_i915_private *i915,
 	if (sseu->has_eu_pg) {
 		u32 val;
 
-		val = ctx_sseu.min_eus_per_subslice << GEN8_RPCS_EU_MIN_SHIFT;
+		val = req_sseu->min_eus_per_subslice << GEN8_RPCS_EU_MIN_SHIFT;
 		GEM_BUG_ON(val & ~GEN8_RPCS_EU_MIN_MASK);
 		val &= GEN8_RPCS_EU_MIN_MASK;
 
 		rpcs |= val;
 
-		val = ctx_sseu.max_eus_per_subslice << GEN8_RPCS_EU_MAX_SHIFT;
+		val = req_sseu->max_eus_per_subslice << GEN8_RPCS_EU_MAX_SHIFT;
 		GEM_BUG_ON(val & ~GEN8_RPCS_EU_MAX_MASK);
 		val &= GEN8_RPCS_EU_MAX_MASK;
 

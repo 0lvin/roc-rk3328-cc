@@ -531,8 +531,8 @@ static void setup_itct_v1_hw(struct hisi_hba *hisi_hba,
 				(0xff00ULL << ITCT_HDR_REJ_OPEN_TL_OFF));
 }
 
-static void clear_itct_v1_hw(struct hisi_hba *hisi_hba,
-			      struct hisi_sas_device *sas_dev)
+static int clear_itct_v1_hw(struct hisi_hba *hisi_hba,
+			    struct hisi_sas_device *sas_dev)
 {
 	u64 dev_id = sas_dev->device_id;
 	struct hisi_sas_itct *itct = &hisi_hba->itct[dev_id];
@@ -551,6 +551,8 @@ static void clear_itct_v1_hw(struct hisi_hba *hisi_hba,
 	qw0 = le64_to_cpu(itct->qw0);
 	qw0 &= ~ITCT_HDR_VALID_MSK;
 	itct->qw0 = cpu_to_le64(qw0);
+
+	return 0;
 }
 
 static int reset_hw_v1_hw(struct hisi_hba *hisi_hba)
@@ -1173,15 +1175,14 @@ static void slot_err_v1_hw(struct hisi_hba *hisi_hba,
 
 }
 
-static int slot_complete_v1_hw(struct hisi_hba *hisi_hba,
-			       struct hisi_sas_slot *slot)
+static void slot_complete_v1_hw(struct hisi_hba *hisi_hba,
+				struct hisi_sas_slot *slot)
 {
 	struct sas_task *task = slot->task;
 	struct hisi_sas_device *sas_dev;
 	struct device *dev = hisi_hba->dev;
 	struct task_status_struct *ts;
 	struct domain_device *device;
-	enum exec_status sts;
 	struct hisi_sas_complete_v1_hdr *complete_queue =
 			hisi_hba->complete_hdr[slot->cmplt_queue];
 	struct hisi_sas_complete_v1_hdr *complete_hdr;
@@ -1192,7 +1193,7 @@ static int slot_complete_v1_hw(struct hisi_hba *hisi_hba,
 	cmplt_hdr_data = le32_to_cpu(complete_hdr->data);
 
 	if (unlikely(!task || !task->lldd_task || !task->dev))
-		return -EINVAL;
+		return;
 
 	ts = &task->task_status;
 	device = task->dev;
@@ -1258,7 +1259,7 @@ static int slot_complete_v1_hw(struct hisi_hba *hisi_hba,
 
 		slot_err_v1_hw(hisi_hba, task, slot);
 		if (unlikely(slot->abort))
-			return ts->stat;
+			return;
 		goto out;
 	}
 
@@ -1307,12 +1308,9 @@ static int slot_complete_v1_hw(struct hisi_hba *hisi_hba,
 
 out:
 	hisi_sas_slot_task_free(hisi_hba, task, slot);
-	sts = ts->stat;
 
 	if (task->task_done)
 		task->task_done(task);
-
-	return sts;
 }
 
 /* Interrupts */
@@ -1755,8 +1753,10 @@ static struct device_attribute *host_attrs_v1_hw[] = {
 
 static struct scsi_host_template sht_v1_hw = {
 	.name			= DRV_NAME,
+	.proc_name		= DRV_NAME,
 	.module			= THIS_MODULE,
 	.queuecommand		= sas_queuecommand,
+	.dma_need_drain		= ata_scsi_dma_need_drain,
 	.target_alloc		= sas_target_alloc,
 	.slave_configure	= hisi_sas_slave_configure,
 	.scan_finished		= hisi_sas_scan_finished,
@@ -1770,6 +1770,9 @@ static struct scsi_host_template sht_v1_hw = {
 	.eh_target_reset_handler = sas_eh_target_reset_handler,
 	.target_destroy		= sas_target_destroy,
 	.ioctl			= sas_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl		= sas_ioctl,
+#endif
 	.shost_attrs		= host_attrs_v1_hw,
 	.host_reset             = hisi_sas_host_reset,
 };

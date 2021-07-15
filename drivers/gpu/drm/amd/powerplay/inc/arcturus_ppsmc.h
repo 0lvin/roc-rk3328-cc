@@ -95,8 +95,7 @@
 
 //BTC
 #define PPSMC_MSG_RunAfllBtc                     0x30
-#define PPSMC_MSG_RunGfxDcBtc                    0x31
-#define PPSMC_MSG_RunSocDcBtc                    0x32
+#define PPSMC_MSG_RunDcBtc                       0x31
 
 //Debug
 #define PPSMC_MSG_DramLogSetDramAddrHigh         0x33
@@ -111,7 +110,12 @@
 //Others
 #define PPSMC_MSG_SetMemoryChannelEnable         0x39
 
-#define PPSMC_Message_Count                      0x3A
+//OOB
+#define PPSMC_MSG_SetNumBadHbmPagesRetired	 0x3A
+
+#define PPSMC_MSG_DFCstateControl		 0x3B
+#define PPSMC_MSG_GmiPwrDnControl                0x3D
+#define PPSMC_Message_Count                      0x3E
 
 typedef uint32_t PPSMC_Result;
 typedef uint32_t PPSMC_Msg;

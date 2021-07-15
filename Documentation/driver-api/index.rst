@@ -17,6 +17,7 @@ available subsections can be seen below.
    driver-model/index
    basics
    infrastructure
+   ioctl
    early-userspace/index
    pm/index
    clk
@@ -38,8 +39,10 @@ available subsections can be seen below.
    spi
    i2c
    ipmb
+   ipmi
    i3c/index
    interconnect
+   devfreq
    hsi
    edac
    scsi
@@ -61,6 +64,7 @@ available subsections can be seen below.
    pinctl
    gpio/index
    md/index
+   media/index
    misc_devices
    nfc/index
    dmaengine/index
@@ -70,16 +74,15 @@ available subsections can be seen below.
    fpga/index
    acpi/index
    backlight/lp855x-driver.rst
-   bt8xxgpio
    connector
    console
    dcdbas
-   dell_rbu
-   edid
    eisa
    ipmb
    isa
    isapnp
+   io-mapping
+   io_ordering
    generic-counter
    lightnvm-pblk
    memory-devices/index
@@ -94,7 +97,6 @@ available subsections can be seen below.
    pwm
    rfkill
    serial/index
-   sgi-ioc4
    sm501
    smsc_ece1099
    switchtec

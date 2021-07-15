@@ -14,7 +14,7 @@
 #include <asm/hwcap.h>
 #include <asm/image.h>
 
-__INIT
+__HEAD
 ENTRY(_start)
 	/*
 	 * Image header expected by Linux boot-loaders. The image header data
@@ -45,84 +45,7 @@ ENTRY(_start)
 	.ascii RISCV_IMAGE_MAGIC2
 	.word 0
 
-.global _start_kernel
-_start_kernel:
-	/* Mask all interrupts */
-	csrw CSR_IE, zero
-	csrw CSR_IP, zero
-
-#ifdef CONFIG_RISCV_M_MODE
-	/* flush the instruction cache */
-	fence.i
-
-	/* Reset all registers except ra, a0, a1 */
-	call reset_regs
-
-	/*
-	 * The hartid in a0 is expected later on, and we have no firmware
-	 * to hand it to us.
-	 */
-	csrr a0, CSR_MHARTID
-#endif /* CONFIG_RISCV_M_MODE */
-
-	/* Load the global pointer */
-.option push
-.option norelax
-	la gp, __global_pointer$
-.option pop
-
-	/*
-	 * Disable FPU to detect illegal usage of
-	 * floating point in kernel space
-	 */
-	li t0, SR_FS
-	csrc CSR_STATUS, t0
-
-#ifdef CONFIG_SMP
-	li t0, CONFIG_NR_CPUS
-	bgeu a0, t0, .Lsecondary_park
-#endif
-
-	/* Pick one hart to run the main boot sequence */
-	la a3, hart_lottery
-	li a2, 1
-	amoadd.w a3, a2, (a3)
-	bnez a3, .Lsecondary_start
-
-	/* Clear BSS for flat non-ELF images */
-	la a3, __bss_start
-	la a4, __bss_stop
-	ble a4, a3, clear_bss_done
-clear_bss:
-	REG_S zero, (a3)
-	add a3, a3, RISCV_SZPTR
-	blt a3, a4, clear_bss
-clear_bss_done:
-
-	/* Save hart ID and DTB physical address */
-	mv s0, a0
-	mv s1, a1
-	la a2, boot_cpu_hartid
-	REG_S a0, (a2)
-
-	/* Initialize page tables and relocate to virtual addresses */
-	la sp, init_thread_union + THREAD_SIZE
-	mv a0, s1
-	call setup_vm
-#ifdef CONFIG_MMU
-	la a0, early_pg_dir
-	call relocate
-#endif /* CONFIG_MMU */
-
-	/* Restore C environment */
-	la tp, init_task
-	sw zero, TASK_TI_CPU(tp)
-	la sp, init_thread_union + THREAD_SIZE
-
-	/* Start the kernel */
-	call parse_dtb
-	tail start_kernel
-
+.align 2
 #ifdef CONFIG_MMU
 relocate:
 	/* Relocate return address */
@@ -175,6 +98,154 @@ relocate:
 
 	ret
 #endif /* CONFIG_MMU */
+#ifdef CONFIG_SMP
+	.global secondary_start_sbi
+secondary_start_sbi:
+	/* Mask all interrupts */
+	csrw CSR_IE, zero
+	csrw CSR_IP, zero
+
+	/* Load the global pointer */
+	.option push
+	.option norelax
+		la gp, __global_pointer$
+	.option pop
+
+	/*
+	 * Disable FPU to detect illegal usage of
+	 * floating point in kernel space
+	 */
+	li t0, SR_FS
+	csrc CSR_STATUS, t0
+
+	/* Set trap vector to spin forever to help debug */
+	la a3, .Lsecondary_park
+	csrw CSR_TVEC, a3
+
+	slli a3, a0, LGREG
+	la a4, __cpu_up_stack_pointer
+	la a5, __cpu_up_task_pointer
+	add a4, a3, a4
+	add a5, a3, a5
+	REG_L sp, (a4)
+	REG_L tp, (a5)
+
+	.global secondary_start_common
+secondary_start_common:
+
+#ifdef CONFIG_MMU
+	/* Enable virtual memory and relocate to virtual address */
+	la a0, swapper_pg_dir
+	call relocate
+#endif
+	tail smp_callin
+#endif /* CONFIG_SMP */
+
+.Lsecondary_park:
+	/* We lack SMP support or have too many harts, so park this hart */
+	wfi
+	j .Lsecondary_park
+
+END(_start)
+
+	__INIT
+ENTRY(_start_kernel)
+	/* Mask all interrupts */
+	csrw CSR_IE, zero
+	csrw CSR_IP, zero
+
+#ifdef CONFIG_RISCV_M_MODE
+	/* flush the instruction cache */
+	fence.i
+
+	/* Reset all registers except ra, a0, a1 */
+	call reset_regs
+
+	/*
+	 * Setup a PMP to permit access to all of memory.  Some machines may
+	 * not implement PMPs, so we set up a quick trap handler to just skip
+	 * touching the PMPs on any trap.
+	 */
+	la a0, pmp_done
+	csrw CSR_TVEC, a0
+
+	li a0, -1
+	csrw CSR_PMPADDR0, a0
+	li a0, (PMP_A_NAPOT | PMP_R | PMP_W | PMP_X)
+	csrw CSR_PMPCFG0, a0
+.align 2
+pmp_done:
+
+	/*
+	 * The hartid in a0 is expected later on, and we have no firmware
+	 * to hand it to us.
+	 */
+	csrr a0, CSR_MHARTID
+#endif /* CONFIG_RISCV_M_MODE */
+
+	/* Load the global pointer */
+.option push
+.option norelax
+	la gp, __global_pointer$
+.option pop
+
+	/*
+	 * Disable FPU to detect illegal usage of
+	 * floating point in kernel space
+	 */
+	li t0, SR_FS
+	csrc CSR_STATUS, t0
+
+#ifdef CONFIG_SMP
+	li t0, CONFIG_NR_CPUS
+	blt a0, t0, .Lgood_cores
+	tail .Lsecondary_park
+.Lgood_cores:
+#endif
+
+	/* Pick one hart to run the main boot sequence */
+	la a3, hart_lottery
+	li a2, 1
+	amoadd.w a3, a2, (a3)
+	bnez a3, .Lsecondary_start
+
+	/* Clear BSS for flat non-ELF images */
+	la a3, __bss_start
+	la a4, __bss_stop
+	ble a4, a3, clear_bss_done
+clear_bss:
+	REG_S zero, (a3)
+	add a3, a3, RISCV_SZPTR
+	blt a3, a4, clear_bss
+clear_bss_done:
+
+	/* Save hart ID and DTB physical address */
+	mv s0, a0
+	mv s1, a1
+	la a2, boot_cpu_hartid
+	REG_S a0, (a2)
+
+	/* Initialize page tables and relocate to virtual addresses */
+	la sp, init_thread_union + THREAD_SIZE
+	mv a0, s1
+	call setup_vm
+#ifdef CONFIG_MMU
+	la a0, early_pg_dir
+	call relocate
+#endif /* CONFIG_MMU */
+
+	/* Restore C environment */
+	la tp, init_task
+	sw zero, TASK_TI_CPU(tp)
+	la sp, init_thread_union + THREAD_SIZE
+
+#ifdef CONFIG_KASAN
+	call kasan_early_init
+#endif
+	/* Start the kernel */
+	call soc_early_init
+	call parse_dtb
+	tail start_kernel
 
 .Lsecondary_start:
 #ifdef CONFIG_SMP
@@ -200,21 +271,10 @@ relocate:
 	beqz tp, .Lwait_for_cpu_up
 	fence
 
-#ifdef CONFIG_MMU
-	/* Enable virtual memory and relocate to virtual address */
-	la a0, swapper_pg_dir
-	call relocate
+	tail secondary_start_common
 #endif
 
-	tail smp_callin
-#endif
-
-.align 2
-.Lsecondary_park:
-	/* We lack SMP support or have too many harts, so park this hart */
-	wfi
-	j .Lsecondary_park
-END(_start)
+END(_start_kernel)
 
 #ifdef CONFIG_RISCV_M_MODE
 ENTRY(reset_regs)
@@ -246,12 +306,12 @@ ENTRY(reset_regs)
 	li	t4, 0
 	li	t5, 0
 	li	t6, 0
-	csrw	sscratch, 0
+	csrw	CSR_SCRATCH, 0
 
 #ifdef CONFIG_FPU
 	csrr	t0, CSR_MISA
 	andi	t0, t0, (COMPAT_HWCAP_ISA_F | COMPAT_HWCAP_ISA_D)
-	bnez	t0, .Lreset_regs_done
+	beqz	t0, .Lreset_regs_done
 
 	li	t1, SR_FS
 	csrs	CSR_STATUS, t1

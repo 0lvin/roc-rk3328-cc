@@ -62,15 +62,6 @@ struct hsr_tag {
  * with the path field in-between, which seems strange. I'm guessing the MAC
  * address definition is in error.
  */
-static inline u16 get_hsr_tag_path(struct hsr_tag *ht)
-{
-	return ntohs(ht->path_and_LSDU_size) >> 12;
-}
-
-static inline u16 get_hsr_tag_LSDU_size(struct hsr_tag *ht)
-{
-	return ntohs(ht->path_and_LSDU_size) & 0x0FFF;
-}
 
 static inline void set_hsr_tag_path(struct hsr_tag *ht, u16 path)
 {
@@ -102,16 +93,6 @@ struct hsr_sup_tag {
 struct hsr_sup_payload {
 	unsigned char	macaddress_A[ETH_ALEN];
 } __packed;
-
-static inline u16 get_hsr_stag_path(struct hsr_sup_tag *hst)
-{
-	return get_hsr_tag_path((struct hsr_tag *)hst);
-}
-
-static inline u16 get_hsr_stag_HSR_ver(struct hsr_sup_tag *hst)
-{
-	return get_hsr_tag_LSDU_size((struct hsr_tag *)hst);
-}
 
 static inline void set_hsr_stag_path(struct hsr_sup_tag *hst, u16 path)
 {
@@ -160,12 +141,12 @@ struct hsr_priv {
 	int announce_count;
 	u16 sequence_nr;
 	u16 sup_sequence_nr;	/* For HSRv1 separate seq_nr for supervision */
-	u8 prot_version;		/* Indicate if HSRv0 or HSRv1. */
-	spinlock_t seqnr_lock;			/* locking for sequence_nr */
+	u8 prot_version;	/* Indicate if HSRv0 or HSRv1. */
+	spinlock_t seqnr_lock;	/* locking for sequence_nr */
+	spinlock_t list_lock;	/* locking for node list */
 	unsigned char		sup_multicast_addr[ETH_ALEN];
 #ifdef	CONFIG_DEBUG_FS
 	struct dentry *node_tbl_root;
-	struct dentry *node_tbl_file;
 #endif
 };
 
@@ -184,16 +165,23 @@ static inline u16 hsr_get_skb_sequence_nr(struct sk_buff *skb)
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-int hsr_debugfs_init(struct hsr_priv *priv, struct net_device *hsr_dev);
+void hsr_debugfs_rename(struct net_device *dev);
+void hsr_debugfs_init(struct hsr_priv *priv, struct net_device *hsr_dev);
 void hsr_debugfs_term(struct hsr_priv *priv);
+void hsr_debugfs_create_root(void);
+void hsr_debugfs_remove_root(void);
 #else
-static inline int hsr_debugfs_init(struct hsr_priv *priv,
-				   struct net_device *hsr_dev)
+static inline void hsr_debugfs_rename(struct net_device *dev)
 {
-	return 0;
 }
-
+static inline void hsr_debugfs_init(struct hsr_priv *priv,
+				    struct net_device *hsr_dev)
+{}
 static inline void hsr_debugfs_term(struct hsr_priv *priv)
+{}
+static inline void hsr_debugfs_create_root(void)
+{}
+static inline void hsr_debugfs_remove_root(void)
 {}
 #endif
 

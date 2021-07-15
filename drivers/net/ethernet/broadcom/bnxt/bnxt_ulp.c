@@ -104,7 +104,13 @@ static void bnxt_fill_msix_vecs(struct bnxt *bp, struct bnxt_msix_entry *ent)
 	for (i = 0; i < num_msix; i++) {
 		ent[i].vector = bp->irq_tbl[idx + i].vector;
 		ent[i].ring_idx = idx + i;
-		ent[i].db_offset = (idx + i) * 0x80;
+		if (bp->flags & BNXT_FLAG_CHIP_P5) {
+			ent[i].db_offset = DB_PF_OFFSET_P5;
+			if (BNXT_VF(bp))
+				ent[i].db_offset = DB_VF_OFFSET_P5;
+		} else {
+			ent[i].db_offset = (idx + i) * 0x80;
+		}
 	}
 }
 
@@ -113,8 +119,10 @@ static int bnxt_req_msix_vecs(struct bnxt_en_dev *edev, int ulp_id,
 {
 	struct net_device *dev = edev->net;
 	struct bnxt *bp = netdev_priv(dev);
+	struct bnxt_hw_resc *hw_resc;
 	int max_idx, max_cp_rings;
 	int avail_msix, idx;
+	int total_vecs;
 	int rc = 0;
 
 	ASSERT_RTNL();
@@ -142,7 +150,10 @@ static int bnxt_req_msix_vecs(struct bnxt_en_dev *edev, int ulp_id,
 	}
 	edev->ulp_tbl[ulp_id].msix_base = idx;
 	edev->ulp_tbl[ulp_id].msix_requested = avail_msix;
-	if (bp->total_irqs < (idx + avail_msix)) {
+	hw_resc = &bp->hw_resc;
+	total_vecs = idx + avail_msix;
+	if (bp->total_irqs < total_vecs ||
+	    (BNXT_NEW_RM(bp) && hw_resc->resv_irqs < total_vecs)) {
 		if (netif_running(dev)) {
 			bnxt_close_nic(bp, true, false);
 			rc = bnxt_open_nic(bp, true, false);
@@ -156,7 +167,6 @@ static int bnxt_req_msix_vecs(struct bnxt_en_dev *edev, int ulp_id,
 	}
 
 	if (BNXT_NEW_RM(bp)) {
-		struct bnxt_hw_resc *hw_resc = &bp->hw_resc;
 		int resv_msix;
 
 		resv_msix = hw_resc->resv_irqs - bp->cp_nr_rings;
@@ -471,6 +481,8 @@ struct bnxt_en_dev *bnxt_ulp_probe(struct net_device *dev)
 			edev->flags |= BNXT_EN_FLAG_ROCEV2_CAP;
 		edev->net = dev;
 		edev->pdev = bp->pdev;
+		edev->l2_db_size = bp->db_size;
+		edev->l2_db_size_nc = bp->db_size;
 		bp->edev = edev;
 	}
 	return bp->edev;

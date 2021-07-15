@@ -17,6 +17,11 @@
 
 #define NUM_YUV2YUV_COEFFICIENTS 12
 
+#define ROCKCHIP_AFBC_MOD \
+	DRM_FORMAT_MOD_ARM_AFBC( \
+		AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 | AFBC_FORMAT_MOD_SPARSE \
+	)
+
 enum vop_data_format {
 	VOP_FMT_ARGB8888 = 0,
 	VOP_FMT_RGB888,
@@ -34,6 +39,16 @@ struct vop_reg {
 	bool relaxed;
 };
 
+struct vop_afbc {
+	struct vop_reg enable;
+	struct vop_reg win_sel;
+	struct vop_reg format;
+	struct vop_reg hreg_block_split;
+	struct vop_reg pic_size;
+	struct vop_reg hdr_ptr;
+	struct vop_reg rstn;
+};
+
 struct vop_modeset {
 	struct vop_reg htotal_pw;
 	struct vop_reg hact_st_end;
@@ -46,10 +61,15 @@ struct vop_modeset {
 struct vop_output {
 	struct vop_reg pin_pol;
 	struct vop_reg dp_pin_pol;
+	struct vop_reg dp_dclk_pol;
 	struct vop_reg edp_pin_pol;
+	struct vop_reg edp_dclk_pol;
 	struct vop_reg hdmi_pin_pol;
+	struct vop_reg hdmi_dclk_pol;
 	struct vop_reg mipi_pin_pol;
+	struct vop_reg mipi_dclk_pol;
 	struct vop_reg rgb_pin_pol;
+	struct vop_reg rgb_dclk_pol;
 	struct vop_reg dp_en;
 	struct vop_reg edp_en;
 	struct vop_reg hdmi_en;
@@ -67,6 +87,7 @@ struct vop_common {
 	struct vop_reg dither_down_mode;
 	struct vop_reg dither_down_en;
 	struct vop_reg dither_up;
+	struct vop_reg dsp_lut_en;
 	struct vop_reg gate_en;
 	struct vop_reg mmu_en;
 	struct vop_reg out_mode;
@@ -75,16 +96,6 @@ struct vop_common {
 
 struct vop_misc {
 	struct vop_reg global_regdone_en;
-};
-
-struct vop_csc {
-	struct vop_reg y2r_en;
-	struct vop_reg r2r_en;
-	struct vop_reg r2y_en;
-
-	uint32_t y2r_offset;
-	uint32_t r2r_offset;
-	uint32_t r2y_offset;
 };
 
 struct vop_intr {
@@ -138,6 +149,7 @@ struct vop_win_phy {
 	const struct vop_scl_regs *scl;
 	const uint32_t *data_formats;
 	uint32_t nformats;
+	const uint64_t *format_modifiers;
 
 	struct vop_reg enable;
 	struct vop_reg gate;
@@ -166,18 +178,9 @@ struct vop_win_yuv2yuv_data {
 
 struct vop_win_data {
 	uint32_t base;
-	enum drm_plane_type type;
 	const struct vop_win_phy *phy;
-	const struct vop_win_phy **area;
-	const struct vop_csc *csc;
-	unsigned int area_size;
-	u64 feature;
+	enum drm_plane_type type;
 };
-
-#define WIN_FEATURE_HDR2SDR		BIT(0)
-#define WIN_FEATURE_SDR2HDR		BIT(1)
-#define WIN_FEATURE_PRE_OVERLAY		BIT(2)
-#define WIN_FEATURE_AFBDC		BIT(3)
 
 struct vop_data {
 	uint32_t version;
@@ -186,16 +189,16 @@ struct vop_data {
 	const struct vop_misc *misc;
 	const struct vop_modeset *modeset;
 	const struct vop_output *output;
+	const struct vop_afbc *afbc;
 	const struct vop_win_yuv2yuv_data *win_yuv2yuv;
 	const struct vop_win_data *win;
 	unsigned int win_size;
+	unsigned int lut_size;
 
 #define VOP_FEATURE_OUTPUT_RGB10	BIT(0)
 #define VOP_FEATURE_INTERNAL_RGB	BIT(1)
 	u64 feature;
 };
-
-#define CVBS_PAL_VDISPLAY		288
 
 /* interrupt define */
 #define DSP_HOLD_VALID_INTR		(1 << 0)
@@ -253,20 +256,11 @@ struct vop_data {
 /*
  * display output interface supported by rockchip lcdc
  */
-#define ROCKCHIP_OUT_MODE_P888		0
-#define ROCKCHIP_OUT_MODE_P666		1
-#define ROCKCHIP_OUT_MODE_P565		2
-#define ROCKCHIP_OUT_MODE_S888		8
-#define ROCKCHIP_OUT_MODE_S888_DUMMY	12
-#define ROCKCHIP_OUT_MODE_YUV420	14
+#define ROCKCHIP_OUT_MODE_P888	0
+#define ROCKCHIP_OUT_MODE_P666	1
+#define ROCKCHIP_OUT_MODE_P565	2
 /* for use special outface */
-#define ROCKCHIP_OUT_MODE_AAAA		15
-
-#define ROCKCHIP_OUT_MODE_TYPE(x)	((x) >> 16)
-#define ROCKCHIP_OUT_MODE(x)		((x) & 0xffff)
-#define ROCKCHIP_DSP_MODE(type, mode) \
-		(DRM_MODE_CONNECTOR_##type << 16) | \
-		(ROCKCHIP_OUT_MODE_##mode & 0xffff)
+#define ROCKCHIP_OUT_MODE_AAAA	15
 
 /* output flags */
 #define ROCKCHIP_OUTPUT_DSI_DUAL	BIT(0)
@@ -338,8 +332,7 @@ enum dither_down_mode_sel {
 enum vop_pol {
 	HSYNC_POSITIVE = 0,
 	VSYNC_POSITIVE = 1,
-	DEN_NEGATIVE   = 2,
-	DCLK_INVERT    = 3
+	DEN_NEGATIVE   = 2
 };
 
 #define FRAC_16_16(mult, div)    (((mult) << 16) / (div))
@@ -366,7 +359,7 @@ static inline uint16_t scl_get_bili_dn_vskip(int src_h, int dst_h,
 {
 	int act_height;
 
-	act_height = (src_h + vskiplines - 1) / vskiplines;
+	act_height = DIV_ROUND_UP(src_h, vskiplines);
 
 	if (act_height == dst_h)
 		return GET_SCL_FT_BILI_DN(src_h, dst_h) / vskiplines;

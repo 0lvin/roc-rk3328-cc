@@ -6,7 +6,6 @@
 #ifndef __SOC_ROCKCHIP_OPP_SELECT_H
 #define __SOC_ROCKCHIP_OPP_SELECT_H
 
-int rockchip_of_get_lkg_scale_sel(struct device *dev, char *name);
 int rockchip_of_get_lkg_volt_sel(struct device *dev, char *name);
 
 #endif

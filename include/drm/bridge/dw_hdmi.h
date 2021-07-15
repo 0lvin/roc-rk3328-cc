@@ -122,30 +122,14 @@ struct dw_hdmi_phy_ops {
 	void (*setup_hpd)(struct dw_hdmi *hdmi, void *data);
 };
 
-struct dw_hdmi_property_ops {
-	void (*attatch_properties)(struct drm_connector *connector,
-				   unsigned int color, int version,
-				   void *data);
-	void (*destroy_properties)(struct drm_connector *connector,
-				   void *data);
-	int (*set_property)(struct drm_connector *connector,
-			    struct drm_connector_state *state,
-			    struct drm_property *property,
-			    u64 val,
-			    void *data);
-	int (*get_property)(struct drm_connector *connector,
-			    const struct drm_connector_state *state,
-			    struct drm_property *property,
-			    u64 *val,
-			    void *data);
-};
-
 struct dw_hdmi_plat_data {
 	struct regmap *regm;
 	enum drm_mode_status (*mode_valid)(struct drm_connector *connector,
 					   const struct drm_display_mode *mode);
 	unsigned long input_bus_format;
 	unsigned long input_bus_encoding;
+	bool use_drm_infoframe;
+	bool ycbcr_420_allowed;
 
 	/* Vendor PHY support */
 	const struct dw_hdmi_phy_ops *phy_ops;
@@ -155,15 +139,11 @@ struct dw_hdmi_plat_data {
 
 	/* Synopsys PHY support */
 	const struct dw_hdmi_mpll_config *mpll_cfg;
-	const struct dw_hdmi_mpll_config *mpll_cfg_420;
 	const struct dw_hdmi_curr_ctrl *cur_ctr;
 	const struct dw_hdmi_phy_config *phy_config;
 	int (*configure_phy)(struct dw_hdmi *hdmi,
 			     const struct dw_hdmi_plat_data *pdata,
 			     unsigned long mpixelclock);
-
-	/* Vendor Property support */
-	const struct dw_hdmi_property_ops *property_ops;
 };
 
 struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
@@ -183,6 +163,7 @@ int dw_hdmi_set_plugged_cb(struct dw_hdmi *hdmi, hdmi_codec_plugged_cb fn,
 			   struct device *codec_dev);
 void dw_hdmi_set_sample_rate(struct dw_hdmi *hdmi, unsigned int rate);
 void dw_hdmi_set_channel_count(struct dw_hdmi *hdmi, unsigned int cnt);
+void dw_hdmi_set_channel_status(struct dw_hdmi *hdmi, u8 *channel_status);
 void dw_hdmi_set_channel_allocation(struct dw_hdmi *hdmi, unsigned int ca);
 void dw_hdmi_audio_enable(struct dw_hdmi *hdmi);
 void dw_hdmi_audio_disable(struct dw_hdmi *hdmi);

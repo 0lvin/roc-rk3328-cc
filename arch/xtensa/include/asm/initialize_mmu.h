@@ -23,7 +23,8 @@
 #ifndef _XTENSA_INITIALIZE_MMU_H
 #define _XTENSA_INITIALIZE_MMU_H
 
-#include <asm/pgtable.h>
+#include <linux/init.h>
+#include <linux/pgtable.h>
 #include <asm/vectors.h>
 
 #if XCHAL_HAVE_PTP_MMU
@@ -183,7 +184,7 @@
 #endif
 
 #if XCHAL_HAVE_MPU
-	.data
+	__REFCONST
 	.align	4
 .Lattribute_table:
 	.long 0x000000, 0x1fff00, 0x1ddf00, 0x1eef00

@@ -217,6 +217,7 @@ static int usbdev_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct usb_memory *usbm = NULL;
 	struct usb_dev_state *ps = file->private_data;
+	struct usb_hcd *hcd = bus_to_hcd(ps->dev->bus);
 	size_t size = vma->vm_end - vma->vm_start;
 	void *mem;
 	unsigned long flags;
@@ -250,11 +251,19 @@ static int usbdev_mmap(struct file *file, struct vm_area_struct *vma)
 	usbm->vma_use_count = 1;
 	INIT_LIST_HEAD(&usbm->memlist);
 
-	if (remap_pfn_range(vma, vma->vm_start,
-			virt_to_phys(usbm->mem) >> PAGE_SHIFT,
-			size, vma->vm_page_prot) < 0) {
-		dec_usb_memory_use_count(usbm, &usbm->vma_use_count);
-		return -EAGAIN;
+	if (hcd->localmem_pool || !hcd_uses_dma(hcd)) {
+		if (remap_pfn_range(vma, vma->vm_start,
+				    virt_to_phys(usbm->mem) >> PAGE_SHIFT,
+				    size, vma->vm_page_prot) < 0) {
+			dec_usb_memory_use_count(usbm, &usbm->vma_use_count);
+			return -EAGAIN;
+		}
+	} else {
+		if (dma_mmap_coherent(hcd->self.sysdev, vma, mem, dma_handle,
+				      size)) {
+			dec_usb_memory_use_count(usbm, &usbm->vma_use_count);
+			return -EAGAIN;
+		}
 	}
 
 	vma->vm_flags |= VM_IO;
@@ -574,7 +583,7 @@ __acquires(ps->lock)
 
 	/* Now carefully unlink all the marked pending URBs */
  rescan:
-	list_for_each_entry(as, &ps->async_pending, asynclist) {
+	list_for_each_entry_reverse(as, &ps->async_pending, asynclist) {
 		if (as->bulk_status == AS_UNLINK) {
 			as->bulk_status = 0;		/* Only once */
 			urb = as->urb;
@@ -636,7 +645,7 @@ static void destroy_async(struct usb_dev_state *ps, struct list_head *list)
 
 	spin_lock_irqsave(&ps->lock, flags);
 	while (!list_empty(list)) {
-		as = list_entry(list->next, struct async, asynclist);
+		as = list_last_entry(list, struct async, asynclist);
 		list_del_init(&as->asynclist);
 		urb = as->urb;
 		usb_get_urb(urb);
@@ -1127,11 +1136,6 @@ static int proc_control(struct usb_dev_state *ps, void __user *arg)
 		ctrl.bRequestType, ctrl.bRequest, ctrl.wValue,
 		ctrl.wIndex, ctrl.wLength);
 	if (ctrl.bRequestType & 0x80) {
-		if (ctrl.wLength && !access_ok(ctrl.data,
-					       ctrl.wLength)) {
-			ret = -EINVAL;
-			goto done;
-		}
 		pipe = usb_rcvctrlpipe(dev, 0);
 		snoop_urb(dev, NULL, pipe, ctrl.wLength, tmo, SUBMIT, NULL, 0);
 
@@ -1216,10 +1220,6 @@ static int proc_bulk(struct usb_dev_state *ps, void __user *arg)
 	}
 	tmo = bulk.timeout;
 	if (bulk.ep & 0x80) {
-		if (len1 && !access_ok(bulk.data, len1)) {
-			ret = -EINVAL;
-			goto done;
-		}
 		snoop_urb(dev, NULL, pipe, len1, tmo, SUBMIT, NULL, 0);
 
 		usb_unlock_device(dev);
@@ -2698,18 +2698,6 @@ static long usbdev_ioctl(struct file *file, unsigned int cmd,
 	return ret;
 }
 
-#ifdef CONFIG_COMPAT
-static long usbdev_compat_ioctl(struct file *file, unsigned int cmd,
-			unsigned long arg)
-{
-	int ret;
-
-	ret = usbdev_do_ioctl(file, cmd, compat_ptr(arg));
-
-	return ret;
-}
-#endif
-
 /* No kernel lock - fine */
 static __poll_t usbdev_poll(struct file *file,
 				struct poll_table_struct *wait)
@@ -2733,9 +2721,7 @@ const struct file_operations usbdev_file_operations = {
 	.read =		  usbdev_read,
 	.poll =		  usbdev_poll,
 	.unlocked_ioctl = usbdev_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl =   usbdev_compat_ioctl,
-#endif
+	.compat_ioctl =   compat_ptr_ioctl,
 	.mmap =           usbdev_mmap,
 	.open =		  usbdev_open,
 	.release =	  usbdev_release,

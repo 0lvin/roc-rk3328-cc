@@ -5,10 +5,9 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,10 +27,9 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -195,6 +193,8 @@ static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
 		.non_asap = 1,
 		.request_lci = 1,
 		.request_civicloc = 1,
+		.trigger_based = 1,
+		.non_trigger_based = 1,
 		.max_bursts_exponent = -1, /* all supported */
 		.max_ftms_per_burst = 0, /* no limits */
 		.bandwidths = BIT(NL80211_CHAN_WIDTH_20_NOHT) |
@@ -203,7 +203,8 @@ static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
 			      BIT(NL80211_CHAN_WIDTH_80),
 		.preambles = BIT(NL80211_PREAMBLE_LEGACY) |
 			     BIT(NL80211_PREAMBLE_HT) |
-			     BIT(NL80211_PREAMBLE_VHT),
+			     BIT(NL80211_PREAMBLE_VHT) |
+			     BIT(NL80211_PREAMBLE_HE),
 	},
 };
 
@@ -256,7 +257,8 @@ struct ieee80211_regdomain *iwl_mvm_get_regdomain(struct wiphy *wiphy,
 				      __le32_to_cpu(resp->n_channels),
 				      resp->channels,
 				      __le16_to_cpu(resp->mcc),
-				      __le16_to_cpu(resp->geo_info));
+				      __le16_to_cpu(resp->geo_info),
+				      __le16_to_cpu(resp->cap));
 	/* Store the return source id */
 	src_id = resp->source_id;
 	kfree(resp);
@@ -473,23 +475,23 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 		hw->wiphy->n_cipher_suites++;
 	}
 
-	/* Enable 11w if software crypto is not enabled (as the
-	 * firmware will interpret some mgmt packets, so enabling it
-	 * with software crypto isn't safe).
-	 */
-	if (!iwlwifi_mod_params.swcrypto) {
-		ieee80211_hw_set(hw, MFP_CAPABLE);
+	if (iwlwifi_mod_params.swcrypto)
+		IWL_ERR(mvm,
+			"iwlmvm doesn't allow to disable HW crypto, check swcrypto module parameter\n");
+	if (!iwlwifi_mod_params.bt_coex_active)
+		IWL_ERR(mvm,
+			"iwlmvm doesn't allow to disable BT Coex, check bt_coex_active module parameter\n");
+
+	ieee80211_hw_set(hw, MFP_CAPABLE);
+	mvm->ciphers[hw->wiphy->n_cipher_suites] = WLAN_CIPHER_SUITE_AES_CMAC;
+	hw->wiphy->n_cipher_suites++;
+	if (iwl_mvm_has_new_rx_api(mvm)) {
 		mvm->ciphers[hw->wiphy->n_cipher_suites] =
-			WLAN_CIPHER_SUITE_AES_CMAC;
+			WLAN_CIPHER_SUITE_BIP_GMAC_128;
 		hw->wiphy->n_cipher_suites++;
-		if (iwl_mvm_has_new_rx_api(mvm)) {
-			mvm->ciphers[hw->wiphy->n_cipher_suites] =
-				WLAN_CIPHER_SUITE_BIP_GMAC_128;
-			hw->wiphy->n_cipher_suites++;
-			mvm->ciphers[hw->wiphy->n_cipher_suites] =
-				WLAN_CIPHER_SUITE_BIP_GMAC_256;
-			hw->wiphy->n_cipher_suites++;
-		}
+		mvm->ciphers[hw->wiphy->n_cipher_suites] =
+			WLAN_CIPHER_SUITE_BIP_GMAC_256;
+		hw->wiphy->n_cipher_suites++;
 	}
 
 	/* currently FW API supports only one optional cipher scheme */
@@ -615,7 +617,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 
 	hw->wiphy->max_sched_scan_reqs = 1;
 	hw->wiphy->max_sched_scan_ssids = PROBE_OPTION_MAX;
-	hw->wiphy->max_match_sets = IWL_SCAN_MAX_PROFILES;
+	hw->wiphy->max_match_sets = iwl_umac_scan_get_max_profiles(mvm->fw);
 	/* we create the 802.11 header and zero length SSID IE. */
 	hw->wiphy->max_sched_scan_ie_len =
 		SCAN_OFFLOAD_PROBE_REQ_SIZE - 24 - 2;
@@ -695,15 +697,15 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 				     WIPHY_WOWLAN_EAP_IDENTITY_REQ |
 				     WIPHY_WOWLAN_RFKILL_RELEASE |
 				     WIPHY_WOWLAN_NET_DETECT;
-		if (!iwlwifi_mod_params.swcrypto)
-			mvm->wowlan.flags |= WIPHY_WOWLAN_SUPPORTS_GTK_REKEY |
-					     WIPHY_WOWLAN_GTK_REKEY_FAILURE |
-					     WIPHY_WOWLAN_4WAY_HANDSHAKE;
+		mvm->wowlan.flags |= WIPHY_WOWLAN_SUPPORTS_GTK_REKEY |
+				     WIPHY_WOWLAN_GTK_REKEY_FAILURE |
+				     WIPHY_WOWLAN_4WAY_HANDSHAKE;
 
 		mvm->wowlan.n_patterns = IWL_WOWLAN_MAX_PATTERNS;
 		mvm->wowlan.pattern_min_len = IWL_WOWLAN_MIN_PATTERN_LEN;
 		mvm->wowlan.pattern_max_len = IWL_WOWLAN_MAX_PATTERN_LEN;
-		mvm->wowlan.max_nd_match_sets = IWL_SCAN_MAX_PROFILES;
+		mvm->wowlan.max_nd_match_sets =
+			iwl_umac_scan_get_max_profiles(mvm->fw);
 		hw->wiphy->wowlan = &mvm->wowlan;
 	}
 #endif
@@ -754,6 +756,20 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 	return ret;
 }
 
+static void iwl_mvm_tx_skb(struct iwl_mvm *mvm, struct sk_buff *skb,
+			   struct ieee80211_sta *sta)
+{
+	if (likely(sta)) {
+		if (likely(iwl_mvm_tx_skb_sta(mvm, skb, sta) == 0))
+			return;
+	} else {
+		if (likely(iwl_mvm_tx_skb_non_sta(mvm, skb) == 0))
+			return;
+	}
+
+	ieee80211_free_txskb(mvm->hw, skb);
+}
+
 static void iwl_mvm_mac_tx(struct ieee80211_hw *hw,
 			   struct ieee80211_tx_control *control,
 			   struct sk_buff *skb)
@@ -797,14 +813,7 @@ static void iwl_mvm_mac_tx(struct ieee80211_hw *hw,
 		}
 	}
 
-	if (sta) {
-		if (iwl_mvm_tx_skb(mvm, skb, sta))
-			goto drop;
-		return;
-	}
-
-	if (iwl_mvm_tx_skb_non_sta(mvm, skb))
-		goto drop;
+	iwl_mvm_tx_skb(mvm, skb, sta);
 	return;
  drop:
 	ieee80211_free_txskb(hw, skb);
@@ -854,10 +863,7 @@ void iwl_mvm_mac_itxq_xmit(struct ieee80211_hw *hw, struct ieee80211_txq *txq)
 				break;
 			}
 
-			if (!txq->sta)
-				iwl_mvm_tx_skb_non_sta(mvm, skb);
-			else
-				iwl_mvm_tx_skb(mvm, skb, txq->sta);
+			iwl_mvm_tx_skb(mvm, skb, txq->sta);
 		}
 	} while (atomic_dec_return(&mvmtxq->tx_request));
 	rcu_read_unlock();
@@ -1202,13 +1208,12 @@ void __iwl_mvm_mac_stop(struct iwl_mvm *mvm)
 	 */
 	flush_work(&mvm->roc_done_wk);
 
+	iwl_mvm_rm_aux_sta(mvm);
+
 	iwl_mvm_stop_device(mvm);
 
 	iwl_mvm_async_handlers_purge(mvm);
 	/* async_handlers_list is empty and will stay empty: HW is stopped */
-
-	/* the fw is stopped, the aux sta is dead: clean up driver state */
-	iwl_mvm_del_aux_sta(mvm);
 
 	/*
 	 * Clear IN_HW_RESTART and HW_RESTART_REQUESTED flag when stopping the
@@ -1257,7 +1262,6 @@ static void iwl_mvm_mac_stop(struct ieee80211_hw *hw)
 
 	cancel_delayed_work_sync(&mvm->cs_tx_unblock_dwork);
 	cancel_delayed_work_sync(&mvm->scan_timeout_dwork);
-	iwl_fw_free_dump_desc(&mvm->fwrt);
 
 	mutex_lock(&mvm->mutex);
 	__iwl_mvm_mac_stop(mvm);
@@ -2016,7 +2020,7 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 	struct iwl_he_sta_context_cmd sta_ctxt_cmd = {
 		.sta_id = sta_id,
 		.tid_limit = IWL_MAX_TID_COUNT,
-		.bss_color = vif->bss_conf.bss_color,
+		.bss_color = vif->bss_conf.he_bss_color.color,
 		.htc_trig_based_pkt_ext = vif->bss_conf.htc_trig_based_pkt_ext,
 		.frame_time_rts_th =
 			cpu_to_le16(vif->bss_conf.frame_time_rts_th),
@@ -2032,7 +2036,7 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 	rcu_read_lock();
 
 	sta = rcu_dereference(mvm->fw_id_to_mac_id[sta_ctxt_cmd.sta_id]);
-	if (IS_ERR(sta)) {
+	if (IS_ERR_OR_NULL(sta)) {
 		rcu_read_unlock();
 		WARN(1, "Can't find STA to configure HE\n");
 		return;
@@ -2174,6 +2178,15 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 			flags |= STA_CTXT_HE_PACKET_EXT;
 		}
 	}
+
+	if (sta->he_cap.he_cap_elem.mac_cap_info[2] &
+	    IEEE80211_HE_MAC_CAP2_32BIT_BA_BITMAP)
+		flags |= STA_CTXT_HE_32BIT_BA_BITMAP;
+
+	if (sta->he_cap.he_cap_elem.mac_cap_info[2] &
+	    IEEE80211_HE_MAC_CAP2_ACK_EN)
+		flags |= STA_CTXT_HE_ACK_ENABLED;
+
 	rcu_read_unlock();
 
 	/* Mark MU EDCA as enabled, unless none detected on some AC */
@@ -2198,11 +2211,6 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 			cpu_to_le16(mu_edca->mu_edca_timer);
 	}
 
-	if (vif->bss_conf.multi_sta_back_32bit)
-		flags |= STA_CTXT_HE_32BIT_BA_BITMAP;
-
-	if (vif->bss_conf.ack_enabled)
-		flags |= STA_CTXT_HE_ACK_ENABLED;
 
 	if (vif->bss_conf.uora_exists) {
 		flags |= STA_CTXT_HE_TRIG_RND_ALLOC;
@@ -3288,7 +3296,7 @@ static void iwl_mvm_mac_mgd_prepare_tx(struct ieee80211_hw *hw,
 	if (fw_has_capa(&mvm->fw->ucode_capa,
 			IWL_UCODE_TLV_CAPA_SESSION_PROT_CMD))
 		iwl_mvm_schedule_session_protection(mvm, vif, 900,
-						    min_duration);
+						    min_duration, false);
 	else
 		iwl_mvm_protect_session(mvm, vif, duration,
 					min_duration, 500, false);
@@ -3359,11 +3367,6 @@ static int __iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 	int keyidx = key->keyidx;
 	int ret, i;
 	u8 key_offset;
-
-	if (iwlwifi_mod_params.swcrypto) {
-		IWL_DEBUG_MAC80211(mvm, "leave - hwcrypto disabled\n");
-		return -EOPNOTSUPP;
-	}
 
 	switch (key->cipher) {
 	case WLAN_CIPHER_SUITE_TKIP:
@@ -4771,6 +4774,125 @@ static int iwl_mvm_mac_get_survey(struct ieee80211_hw *hw, int idx,
 	return ret;
 }
 
+static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
+{
+	switch (rate_n_flags & RATE_MCS_CHAN_WIDTH_MSK) {
+	case RATE_MCS_CHAN_WIDTH_20:
+		rinfo->bw = RATE_INFO_BW_20;
+		break;
+	case RATE_MCS_CHAN_WIDTH_40:
+		rinfo->bw = RATE_INFO_BW_40;
+		break;
+	case RATE_MCS_CHAN_WIDTH_80:
+		rinfo->bw = RATE_INFO_BW_80;
+		break;
+	case RATE_MCS_CHAN_WIDTH_160:
+		rinfo->bw = RATE_INFO_BW_160;
+		break;
+	}
+
+	if (rate_n_flags & RATE_MCS_HT_MSK) {
+		rinfo->flags |= RATE_INFO_FLAGS_MCS;
+		rinfo->mcs = u32_get_bits(rate_n_flags, RATE_HT_MCS_INDEX_MSK);
+		rinfo->nss = u32_get_bits(rate_n_flags,
+					  RATE_HT_MCS_NSS_MSK) + 1;
+		if (rate_n_flags & RATE_MCS_SGI_MSK)
+			rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
+	} else if (rate_n_flags & RATE_MCS_VHT_MSK) {
+		rinfo->flags |= RATE_INFO_FLAGS_VHT_MCS;
+		rinfo->mcs = u32_get_bits(rate_n_flags,
+					  RATE_VHT_MCS_RATE_CODE_MSK);
+		rinfo->nss = u32_get_bits(rate_n_flags,
+					  RATE_VHT_MCS_NSS_MSK) + 1;
+		if (rate_n_flags & RATE_MCS_SGI_MSK)
+			rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
+	} else if (rate_n_flags & RATE_MCS_HE_MSK) {
+		u32 gi_ltf = u32_get_bits(rate_n_flags,
+					  RATE_MCS_HE_GI_LTF_MSK);
+
+		rinfo->flags |= RATE_INFO_FLAGS_HE_MCS;
+		rinfo->mcs = u32_get_bits(rate_n_flags,
+					  RATE_VHT_MCS_RATE_CODE_MSK);
+		rinfo->nss = u32_get_bits(rate_n_flags,
+					  RATE_VHT_MCS_NSS_MSK) + 1;
+
+		if (rate_n_flags & RATE_MCS_HE_106T_MSK) {
+			rinfo->bw = RATE_INFO_BW_HE_RU;
+			rinfo->he_ru_alloc = NL80211_RATE_INFO_HE_RU_ALLOC_106;
+		}
+
+		switch (rate_n_flags & RATE_MCS_HE_TYPE_MSK) {
+		case RATE_MCS_HE_TYPE_SU:
+		case RATE_MCS_HE_TYPE_EXT_SU:
+			if (gi_ltf == 0 || gi_ltf == 1)
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_0_8;
+			else if (gi_ltf == 2)
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_1_6;
+			else if (rate_n_flags & RATE_MCS_SGI_MSK)
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_0_8;
+			else
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_3_2;
+			break;
+		case RATE_MCS_HE_TYPE_MU:
+			if (gi_ltf == 0 || gi_ltf == 1)
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_0_8;
+			else if (gi_ltf == 2)
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_1_6;
+			else
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_3_2;
+			break;
+		case RATE_MCS_HE_TYPE_TRIG:
+			if (gi_ltf == 0 || gi_ltf == 1)
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_1_6;
+			else
+				rinfo->he_gi = NL80211_RATE_INFO_HE_GI_3_2;
+			break;
+		}
+
+		if (rate_n_flags & RATE_HE_DUAL_CARRIER_MODE_MSK)
+			rinfo->he_dcm = 1;
+	} else {
+		switch (u32_get_bits(rate_n_flags, RATE_LEGACY_RATE_MSK)) {
+		case IWL_RATE_1M_PLCP:
+			rinfo->legacy = 10;
+			break;
+		case IWL_RATE_2M_PLCP:
+			rinfo->legacy = 20;
+			break;
+		case IWL_RATE_5M_PLCP:
+			rinfo->legacy = 55;
+			break;
+		case IWL_RATE_11M_PLCP:
+			rinfo->legacy = 110;
+			break;
+		case IWL_RATE_6M_PLCP:
+			rinfo->legacy = 60;
+			break;
+		case IWL_RATE_9M_PLCP:
+			rinfo->legacy = 90;
+			break;
+		case IWL_RATE_12M_PLCP:
+			rinfo->legacy = 120;
+			break;
+		case IWL_RATE_18M_PLCP:
+			rinfo->legacy = 180;
+			break;
+		case IWL_RATE_24M_PLCP:
+			rinfo->legacy = 240;
+			break;
+		case IWL_RATE_36M_PLCP:
+			rinfo->legacy = 360;
+			break;
+		case IWL_RATE_48M_PLCP:
+			rinfo->legacy = 480;
+			break;
+		case IWL_RATE_54M_PLCP:
+			rinfo->legacy = 540;
+			break;
+		}
+	}
+}
+
 static void iwl_mvm_mac_sta_statistics(struct ieee80211_hw *hw,
 				       struct ieee80211_vif *vif,
 				       struct ieee80211_sta *sta,
@@ -4783,6 +4905,13 @@ static void iwl_mvm_mac_sta_statistics(struct ieee80211_hw *hw,
 	if (mvmsta->avg_energy) {
 		sinfo->signal_avg = mvmsta->avg_energy;
 		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL_AVG);
+	}
+
+	if (iwl_mvm_has_tlc_offload(mvm)) {
+		struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->lq_sta.rs_fw;
+
+		iwl_mvm_set_sta_rate(lq_sta->last_rate_n_flags, &sinfo->txrate);
+		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BITRATE);
 	}
 
 	/* if beacon filtering isn't on mac80211 does it anyway */

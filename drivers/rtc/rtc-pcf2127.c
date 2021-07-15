@@ -137,8 +137,7 @@ static int pcf2127_rtc_read_time(struct device *dev, struct rtc_time *tm)
 	tm->tm_wday = buf[PCF2127_REG_DW] & 0x07;
 	tm->tm_mon = bcd2bin(buf[PCF2127_REG_MO] & 0x1F) - 1; /* rtc mn 1-12 */
 	tm->tm_year = bcd2bin(buf[PCF2127_REG_YR]);
-	if (tm->tm_year < 70)
-		tm->tm_year += 100;	/* assume we are in 1970...2069 */
+	tm->tm_year += 100;
 
 	dev_dbg(dev, "%s: tm is secs=%d, mins=%d, hours=%d, "
 		"mday=%d, mon=%d, year=%d, wday=%d\n",
@@ -172,7 +171,7 @@ static int pcf2127_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	buf[i++] = bin2bcd(tm->tm_mon + 1);
 
 	/* year */
-	buf[i++] = bin2bcd(tm->tm_year % 100);
+	buf[i++] = bin2bcd(tm->tm_year - 100);
 
 	/* write register's data */
 	err = regmap_bulk_write(pcf2127->regmap, PCF2127_REG_SC, buf, i);
@@ -185,32 +184,35 @@ static int pcf2127_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	return 0;
 }
 
-#ifdef CONFIG_RTC_INTF_DEV
 static int pcf2127_rtc_ioctl(struct device *dev,
 				unsigned int cmd, unsigned long arg)
 {
 	struct pcf2127 *pcf2127 = dev_get_drvdata(dev);
-	int touser;
+	int val, touser = 0;
 	int ret;
 
 	switch (cmd) {
 	case RTC_VL_READ:
-		ret = regmap_read(pcf2127->regmap, PCF2127_REG_CTRL3, &touser);
+		ret = regmap_read(pcf2127->regmap, PCF2127_REG_CTRL3, &val);
 		if (ret)
 			return ret;
 
-		touser = touser & PCF2127_BIT_CTRL3_BLF ? 1 : 0;
+		if (val & PCF2127_BIT_CTRL3_BLF)
+			touser |= RTC_VL_BACKUP_LOW;
 
-		if (copy_to_user((void __user *)arg, &touser, sizeof(int)))
-			return -EFAULT;
-		return 0;
+		if (val & PCF2127_BIT_CTRL3_BF)
+			touser |= RTC_VL_BACKUP_SWITCH;
+
+		return put_user(touser, (unsigned int __user *)arg);
+
+	case RTC_VL_CLR:
+		return regmap_update_bits(pcf2127->regmap, PCF2127_REG_CTRL3,
+					  PCF2127_BIT_CTRL3_BF, 0);
+
 	default:
 		return -ENOIOCTLCMD;
 	}
 }
-#else
-#define pcf2127_rtc_ioctl NULL
-#endif
 
 static const struct rtc_class_ops pcf2127_rtc_ops = {
 	.ioctl		= pcf2127_rtc_ioctl,
@@ -417,6 +419,7 @@ static int pcf2127_probe(struct device *dev, struct regmap *regmap,
 			const char *name, bool has_nvmem)
 {
 	struct pcf2127 *pcf2127;
+	u32 wdd_timeout;
 	int ret = 0;
 
 	dev_dbg(dev, "%s\n", __func__);
@@ -434,6 +437,9 @@ static int pcf2127_probe(struct device *dev, struct regmap *regmap,
 		return PTR_ERR(pcf2127->rtc);
 
 	pcf2127->rtc->ops = &pcf2127_rtc_ops;
+	pcf2127->rtc->range_min = RTC_TIMESTAMP_BEGIN_2000;
+	pcf2127->rtc->range_max = RTC_TIMESTAMP_END_2099;
+	pcf2127->rtc->set_start_time = true; /* Sets actual start to 1970 */
 
 	pcf2127->wdd.parent = dev;
 	pcf2127->wdd.info = &pcf2127_wdt_info;
@@ -442,6 +448,7 @@ static int pcf2127_probe(struct device *dev, struct regmap *regmap,
 	pcf2127->wdd.max_timeout = PCF2127_WD_VAL_MAX;
 	pcf2127->wdd.timeout = PCF2127_WD_VAL_DEFAULT;
 	pcf2127->wdd.min_hw_heartbeat_ms = 500;
+	pcf2127->wdd.status = WATCHDOG_NOWAYOUT_INIT_STATUS;
 
 	watchdog_set_drvdata(&pcf2127->wdd, pcf2127);
 
@@ -459,7 +466,6 @@ static int pcf2127_probe(struct device *dev, struct regmap *regmap,
 	/*
 	 * Watchdog timer enabled and reset pin /RST activated when timed out.
 	 * Select 1Hz clock source for watchdog timer.
-	 * Timer is not started until WD_VAL is loaded with a valid value.
 	 * Note: Countdown timer disabled and not available.
 	 */
 	ret = regmap_update_bits(pcf2127->regmap, PCF2127_REG_WD_CTL,
@@ -475,6 +481,14 @@ static int pcf2127_probe(struct device *dev, struct regmap *regmap,
 		return ret;
 	}
 
+	/* Test if watchdog timer is started by bootloader */
+	ret = regmap_read(pcf2127->regmap, PCF2127_REG_WD_VAL, &wdd_timeout);
+	if (ret)
+		return ret;
+
+	if (wdd_timeout)
+		set_bit(WDOG_HW_RUNNING, &pcf2127->wdd.status);
+
 #ifdef CONFIG_WATCHDOG
 	ret = devm_watchdog_register_device(dev, &pcf2127->wdd);
 	if (ret)
@@ -489,7 +503,6 @@ static int pcf2127_probe(struct device *dev, struct regmap *regmap,
 	 */
 	ret = regmap_update_bits(pcf2127->regmap, PCF2127_REG_CTRL3,
 				 PCF2127_BIT_CTRL3_BTSE |
-				 PCF2127_BIT_CTRL3_BF |
 				 PCF2127_BIT_CTRL3_BIE |
 				 PCF2127_BIT_CTRL3_BLIE, 0);
 	if (ret) {
@@ -630,6 +643,7 @@ static int pcf2127_i2c_probe(struct i2c_client *client,
 	static const struct regmap_config config = {
 		.reg_bits = 8,
 		.val_bits = 8,
+		.max_register = 0x1d,
 	};
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
@@ -697,6 +711,7 @@ static int pcf2127_spi_probe(struct spi_device *spi)
 		.val_bits = 8,
 		.read_flag_mask = 0xa0,
 		.write_flag_mask = 0x20,
+		.max_register = 0x1d,
 	};
 	struct regmap *regmap;
 

@@ -70,6 +70,12 @@ struct nouveau_svm {
 #define SVM_DBG(s,f,a...) NV_DEBUG((s)->drm, "svm: "f"\n", ##a)
 #define SVM_ERR(s,f,a...) NV_WARN((s)->drm, "svm: "f"\n", ##a)
 
+struct nouveau_pfnmap_args {
+	struct nvif_ioctl_v0 i;
+	struct nvif_ioctl_mthd_v0 m;
+	struct nvif_vmm_pfnmap_v0 p;
+};
+
 struct nouveau_ivmm {
 	struct nouveau_svmm *svmm;
 	u64 inst;
@@ -88,6 +94,7 @@ nouveau_ivmm_find(struct nouveau_svm *svm, u64 inst)
 }
 
 struct nouveau_svmm {
+	struct mmu_notifier notifier;
 	struct nouveau_vmm *vmm;
 	struct {
 		unsigned long start;
@@ -95,9 +102,6 @@ struct nouveau_svmm {
 	} unmanaged;
 
 	struct mutex mutex;
-
-	struct mm_struct *mm;
-	struct hmm_mirror mirror;
 };
 
 #define SVMM_DBG(s,f,a...)                                                     \
@@ -171,7 +175,12 @@ nouveau_svmm_bind(struct drm_device *dev, void *data,
 	 */
 
 	mm = get_task_mm(current);
-	down_read(&mm->mmap_sem);
+	mmap_read_lock(mm);
+
+	if (!cli->svm.svmm) {
+		mmap_read_unlock(mm);
+		return -EINVAL;
+	}
 
 	for (addr = args->va_start, end = args->va_start + size; addr < end;) {
 		struct vm_area_struct *vma;
@@ -181,9 +190,11 @@ nouveau_svmm_bind(struct drm_device *dev, void *data,
 		if (!vma)
 			break;
 
+		addr = max(addr, vma->vm_start);
 		next = min(vma->vm_end, end);
 		/* This is a best effort so we ignore errors */
-		nouveau_dmem_migrate_vma(cli->drm, vma, addr, next);
+		nouveau_dmem_migrate_vma(cli->drm, cli->svm.svmm, vma, addr,
+					 next);
 		addr = next;
 	}
 
@@ -194,7 +205,7 @@ nouveau_svmm_bind(struct drm_device *dev, void *data,
 	 */
 	args->result = 0;
 
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 	mmput(mm);
 
 	return 0;
@@ -251,10 +262,11 @@ nouveau_svmm_invalidate(struct nouveau_svmm *svmm, u64 start, u64 limit)
 }
 
 static int
-nouveau_svmm_sync_cpu_device_pagetables(struct hmm_mirror *mirror,
-					const struct mmu_notifier_range *update)
+nouveau_svmm_invalidate_range_start(struct mmu_notifier *mn,
+				    const struct mmu_notifier_range *update)
 {
-	struct nouveau_svmm *svmm = container_of(mirror, typeof(*svmm), mirror);
+	struct nouveau_svmm *svmm =
+		container_of(mn, struct nouveau_svmm, notifier);
 	unsigned long start = update->start;
 	unsigned long limit = update->end;
 
@@ -264,6 +276,9 @@ nouveau_svmm_sync_cpu_device_pagetables(struct hmm_mirror *mirror,
 	SVMM_DBG(svmm, "invalidate %016lx-%016lx", start, limit);
 
 	mutex_lock(&svmm->mutex);
+	if (unlikely(!svmm->vmm))
+		goto out;
+
 	if (limit > svmm->unmanaged.start && start < svmm->unmanaged.limit) {
 		if (start < svmm->unmanaged.start) {
 			nouveau_svmm_invalidate(svmm, start,
@@ -273,19 +288,20 @@ nouveau_svmm_sync_cpu_device_pagetables(struct hmm_mirror *mirror,
 	}
 
 	nouveau_svmm_invalidate(svmm, start, limit);
+
+out:
 	mutex_unlock(&svmm->mutex);
 	return 0;
 }
 
-static void
-nouveau_svmm_release(struct hmm_mirror *mirror)
+static void nouveau_svmm_free_notifier(struct mmu_notifier *mn)
 {
+	kfree(container_of(mn, struct nouveau_svmm, notifier));
 }
 
-static const struct hmm_mirror_ops
-nouveau_svmm = {
-	.sync_cpu_device_pagetables = nouveau_svmm_sync_cpu_device_pagetables,
-	.release = nouveau_svmm_release,
+static const struct mmu_notifier_ops nouveau_mn_ops = {
+	.invalidate_range_start = nouveau_svmm_invalidate_range_start,
+	.free_notifier = nouveau_svmm_free_notifier,
 };
 
 void
@@ -293,8 +309,10 @@ nouveau_svmm_fini(struct nouveau_svmm **psvmm)
 {
 	struct nouveau_svmm *svmm = *psvmm;
 	if (svmm) {
-		hmm_mirror_unregister(&svmm->mirror);
-		kfree(*psvmm);
+		mutex_lock(&svmm->mutex);
+		svmm->vmm = NULL;
+		mutex_unlock(&svmm->mutex);
+		mmu_notifier_put(&svmm->notifier);
 		*psvmm = NULL;
 	}
 }
@@ -320,7 +338,7 @@ nouveau_svmm_init(struct drm_device *dev, void *data,
 	mutex_lock(&cli->mutex);
 	if (cli->svm.cli) {
 		ret = -EBUSY;
-		goto done;
+		goto out_free;
 	}
 
 	/* Allocate a new GPU VMM that can support SVM (managed by the
@@ -335,40 +353,28 @@ nouveau_svmm_init(struct drm_device *dev, void *data,
 				.fault_replay = true,
 			    }, sizeof(struct gp100_vmm_v0), &cli->svm.vmm);
 	if (ret)
-		goto done;
+		goto out_free;
 
-	/* Enable HMM mirroring of CPU address-space to VMM. */
-	svmm->mm = get_task_mm(current);
-	down_write(&svmm->mm->mmap_sem);
-	svmm->mirror.ops = &nouveau_svmm;
-	ret = hmm_mirror_register(&svmm->mirror, svmm->mm);
-	if (ret == 0) {
-		cli->svm.svmm = svmm;
-		cli->svm.cli = cli;
-	}
-	up_write(&svmm->mm->mmap_sem);
-	mmput(svmm->mm);
-
-done:
+	mmap_write_lock(current->mm);
+	svmm->notifier.ops = &nouveau_mn_ops;
+	ret = __mmu_notifier_register(&svmm->notifier, current->mm);
 	if (ret)
-		nouveau_svmm_fini(&svmm);
+		goto out_mm_unlock;
+	/* Note, ownership of svmm transfers to mmu_notifier */
+
+	cli->svm.svmm = svmm;
+	cli->svm.cli = cli;
+	mmap_write_unlock(current->mm);
 	mutex_unlock(&cli->mutex);
+	return 0;
+
+out_mm_unlock:
+	mmap_write_unlock(current->mm);
+out_free:
+	mutex_unlock(&cli->mutex);
+	kfree(svmm);
 	return ret;
 }
-
-static const u64
-nouveau_svm_pfn_flags[HMM_PFN_FLAG_MAX] = {
-	[HMM_PFN_VALID         ] = NVIF_VMM_PFNMAP_V0_V,
-	[HMM_PFN_WRITE         ] = NVIF_VMM_PFNMAP_V0_W,
-	[HMM_PFN_DEVICE_PRIVATE] = NVIF_VMM_PFNMAP_V0_VRAM,
-};
-
-static const u64
-nouveau_svm_pfn_values[HMM_PFN_VALUE_MAX] = {
-	[HMM_PFN_ERROR  ] = ~NVIF_VMM_PFNMAP_V0_V,
-	[HMM_PFN_NONE   ] =  NVIF_VMM_PFNMAP_V0_NONE,
-	[HMM_PFN_SPECIAL] = ~NVIF_VMM_PFNMAP_V0_V,
-};
 
 /* Issue fault replay for GPU to retry accesses that faulted previously. */
 static void
@@ -475,43 +481,128 @@ nouveau_svm_fault_cache(struct nouveau_svm *svm,
 		fault->inst, fault->addr, fault->access);
 }
 
-static inline bool
-nouveau_range_done(struct hmm_range *range)
-{
-	bool ret = hmm_range_valid(range);
+struct svm_notifier {
+	struct mmu_interval_notifier notifier;
+	struct nouveau_svmm *svmm;
+};
 
-	hmm_range_unregister(range);
-	return ret;
+static bool nouveau_svm_range_invalidate(struct mmu_interval_notifier *mni,
+					 const struct mmu_notifier_range *range,
+					 unsigned long cur_seq)
+{
+	struct svm_notifier *sn =
+		container_of(mni, struct svm_notifier, notifier);
+
+	/*
+	 * serializes the update to mni->invalidate_seq done by caller and
+	 * prevents invalidation of the PTE from progressing while HW is being
+	 * programmed. This is very hacky and only works because the normal
+	 * notifier that does invalidation is always called after the range
+	 * notifier.
+	 */
+	if (mmu_notifier_range_blockable(range))
+		mutex_lock(&sn->svmm->mutex);
+	else if (!mutex_trylock(&sn->svmm->mutex))
+		return false;
+	mmu_interval_set_seq(mni, cur_seq);
+	mutex_unlock(&sn->svmm->mutex);
+	return true;
 }
 
-static int
-nouveau_range_fault(struct nouveau_svmm *svmm, struct hmm_range *range)
+static const struct mmu_interval_notifier_ops nouveau_svm_mni_ops = {
+	.invalidate = nouveau_svm_range_invalidate,
+};
+
+static void nouveau_hmm_convert_pfn(struct nouveau_drm *drm,
+				    struct hmm_range *range, u64 *ioctl_addr)
 {
-	long ret;
+	unsigned long i, npages;
 
-	range->default_flags = 0;
-	range->pfn_flags_mask = -1UL;
+	/*
+	 * The ioctl_addr prepared here is passed through nvif_object_ioctl()
+	 * to an eventual DMA map in something like gp100_vmm_pgt_pfn()
+	 *
+	 * This is all just encoding the internal hmm representation into a
+	 * different nouveau internal representation.
+	 */
+	npages = (range->end - range->start) >> PAGE_SHIFT;
+	for (i = 0; i < npages; ++i) {
+		struct page *page;
 
-	ret = hmm_range_register(range, &svmm->mirror);
-	if (ret) {
-		up_read(&svmm->mm->mmap_sem);
-		return (int)ret;
+		if (!(range->hmm_pfns[i] & HMM_PFN_VALID)) {
+			ioctl_addr[i] = 0;
+			continue;
+		}
+
+		page = hmm_pfn_to_page(range->hmm_pfns[i]);
+		if (is_device_private_page(page))
+			ioctl_addr[i] = nouveau_dmem_page_addr(page) |
+					NVIF_VMM_PFNMAP_V0_V |
+					NVIF_VMM_PFNMAP_V0_VRAM;
+		else
+			ioctl_addr[i] = page_to_phys(page) |
+					NVIF_VMM_PFNMAP_V0_V |
+					NVIF_VMM_PFNMAP_V0_HOST;
+		if (range->hmm_pfns[i] & HMM_PFN_WRITE)
+			ioctl_addr[i] |= NVIF_VMM_PFNMAP_V0_W;
+	}
+}
+
+static int nouveau_range_fault(struct nouveau_svmm *svmm,
+			       struct nouveau_drm *drm, void *data, u32 size,
+			       unsigned long hmm_pfns[], u64 *ioctl_addr,
+			       struct svm_notifier *notifier)
+{
+	unsigned long timeout =
+		jiffies + msecs_to_jiffies(HMM_RANGE_DEFAULT_TIMEOUT);
+	/* Have HMM fault pages within the fault window to the GPU. */
+	struct hmm_range range = {
+		.notifier = &notifier->notifier,
+		.start = notifier->notifier.interval_tree.start,
+		.end = notifier->notifier.interval_tree.last + 1,
+		.pfn_flags_mask = HMM_PFN_REQ_FAULT | HMM_PFN_REQ_WRITE,
+		.hmm_pfns = hmm_pfns,
+		.dev_private_owner = drm->dev,
+	};
+	struct mm_struct *mm = notifier->notifier.mm;
+	int ret;
+
+	while (true) {
+		if (time_after(jiffies, timeout))
+			return -EBUSY;
+
+		range.notifier_seq = mmu_interval_read_begin(range.notifier);
+		mmap_read_lock(mm);
+		ret = hmm_range_fault(&range);
+		mmap_read_unlock(mm);
+		if (ret) {
+			/*
+			 * FIXME: the input PFN_REQ flags are destroyed on
+			 * -EBUSY, we need to regenerate them, also for the
+			 * other continue below
+			 */
+			if (ret == -EBUSY)
+				continue;
+			return ret;
+		}
+
+		mutex_lock(&svmm->mutex);
+		if (mmu_interval_read_retry(range.notifier,
+					    range.notifier_seq)) {
+			mutex_unlock(&svmm->mutex);
+			continue;
+		}
+		break;
 	}
 
-	if (!hmm_range_wait_until_valid(range, HMM_RANGE_DEFAULT_TIMEOUT)) {
-		up_read(&svmm->mm->mmap_sem);
-		return -EBUSY;
-	}
+	nouveau_hmm_convert_pfn(drm, &range, ioctl_addr);
 
-	ret = hmm_range_fault(range, 0);
-	if (ret <= 0) {
-		if (ret == 0)
-			ret = -EBUSY;
-		up_read(&svmm->mm->mmap_sem);
-		hmm_range_unregister(range);
-		return ret;
-	}
-	return 0;
+	svmm->vmm->vmm.object.client->super = true;
+	ret = nvif_object_ioctl(&svmm->vmm->vmm.object, data, size, NULL);
+	svmm->vmm->vmm.object.client->super = false;
+	mutex_unlock(&svmm->mutex);
+
+	return ret;
 }
 
 static int
@@ -531,7 +622,7 @@ nouveau_svm_fault(struct nvif_notify *notify)
 		} i;
 		u64 phys[16];
 	} args;
-	struct hmm_range range;
+	unsigned long hmm_pfns[ARRAY_SIZE(args.phys)];
 	struct vm_area_struct *vma;
 	u64 inst, start, limit;
 	int fi, fn, pi, fill;
@@ -587,6 +678,9 @@ nouveau_svm_fault(struct nvif_notify *notify)
 	args.i.p.version = 0;
 
 	for (fi = 0; fn = fi + 1, fi < buffer->fault_nr; fi = fn) {
+		struct svm_notifier notifier;
+		struct mm_struct *mm;
+
 		/* Cancel any faults from non-SVM channels. */
 		if (!(svmm = buffer->fault[fi]->svmm)) {
 			nouveau_svm_fault_cancel_fault(svm, buffer->fault[fi]);
@@ -601,29 +695,34 @@ nouveau_svm_fault(struct nvif_notify *notify)
 		limit = start + (ARRAY_SIZE(args.phys) << PAGE_SHIFT);
 		if (start < svmm->unmanaged.limit)
 			limit = min_t(u64, limit, svmm->unmanaged.start);
-		else
-		if (limit > svmm->unmanaged.start)
-			start = max_t(u64, start, svmm->unmanaged.limit);
 		SVMM_DBG(svmm, "wndw %016llx-%016llx", start, limit);
+
+		mm = svmm->notifier.mm;
+		if (!mmget_not_zero(mm)) {
+			nouveau_svm_fault_cancel_fault(svm, buffer->fault[fi]);
+			continue;
+		}
 
 		/* Intersect fault window with the CPU VMA, cancelling
 		 * the fault if the address is invalid.
 		 */
-		down_read(&svmm->mm->mmap_sem);
-		vma = find_vma_intersection(svmm->mm, start, limit);
+		mmap_read_lock(mm);
+		vma = find_vma_intersection(mm, start, limit);
 		if (!vma) {
 			SVMM_ERR(svmm, "wndw %016llx-%016llx", start, limit);
-			up_read(&svmm->mm->mmap_sem);
+			mmap_read_unlock(mm);
+			mmput(mm);
 			nouveau_svm_fault_cancel_fault(svm, buffer->fault[fi]);
 			continue;
 		}
 		start = max_t(u64, start, vma->vm_start);
 		limit = min_t(u64, limit, vma->vm_end);
+		mmap_read_unlock(mm);
 		SVMM_DBG(svmm, "wndw %016llx-%016llx", start, limit);
 
 		if (buffer->fault[fi]->addr != start) {
 			SVMM_ERR(svmm, "addr %016llx", buffer->fault[fi]->addr);
-			up_read(&svmm->mm->mmap_sem);
+			mmput(mm);
 			nouveau_svm_fault_cancel_fault(svm, buffer->fault[fi]);
 			continue;
 		}
@@ -639,12 +738,17 @@ nouveau_svm_fault(struct nvif_notify *notify)
 			 * access flags.
 			 *XXX: atomic?
 			 */
-			if (buffer->fault[fn]->access != 0 /* READ. */ &&
-			    buffer->fault[fn]->access != 3 /* PREFETCH. */) {
-				args.phys[pi++] = NVIF_VMM_PFNMAP_V0_V |
-						  NVIF_VMM_PFNMAP_V0_W;
-			} else {
-				args.phys[pi++] = NVIF_VMM_PFNMAP_V0_V;
+			switch (buffer->fault[fn]->access) {
+			case 0: /* READ. */
+				hmm_pfns[pi++] = HMM_PFN_REQ_FAULT;
+				break;
+			case 3: /* PREFETCH. */
+				hmm_pfns[pi++] = 0;
+				break;
+			default:
+				hmm_pfns[pi++] = HMM_PFN_REQ_FAULT |
+						 HMM_PFN_REQ_WRITE;
+				break;
 			}
 			args.i.p.size = pi << PAGE_SHIFT;
 
@@ -672,40 +776,26 @@ nouveau_svm_fault(struct nvif_notify *notify)
 			fill = (buffer->fault[fn    ]->addr -
 				buffer->fault[fn - 1]->addr) >> PAGE_SHIFT;
 			while (--fill)
-				args.phys[pi++] = NVIF_VMM_PFNMAP_V0_NONE;
+				hmm_pfns[pi++] = 0;
 		}
 
 		SVMM_DBG(svmm, "wndw %016llx-%016llx covering %d fault(s)",
 			 args.i.p.addr,
 			 args.i.p.addr + args.i.p.size, fn - fi);
 
-		/* Have HMM fault pages within the fault window to the GPU. */
-		range.start = args.i.p.addr;
-		range.end = args.i.p.addr + args.i.p.size;
-		range.pfns = args.phys;
-		range.flags = nouveau_svm_pfn_flags;
-		range.values = nouveau_svm_pfn_values;
-		range.pfn_shift = NVIF_VMM_PFNMAP_V0_ADDR_SHIFT;
-again:
-		ret = nouveau_range_fault(svmm, &range);
-		if (ret == 0) {
-			mutex_lock(&svmm->mutex);
-			if (!nouveau_range_done(&range)) {
-				mutex_unlock(&svmm->mutex);
-				goto again;
-			}
-
-			nouveau_dmem_convert_pfn(svm->drm, &range);
-
-			svmm->vmm->vmm.object.client->super = true;
-			ret = nvif_object_ioctl(&svmm->vmm->vmm.object,
-						&args, sizeof(args.i) +
-						pi * sizeof(args.phys[0]),
-						NULL);
-			svmm->vmm->vmm.object.client->super = false;
-			mutex_unlock(&svmm->mutex);
-			up_read(&svmm->mm->mmap_sem);
+		notifier.svmm = svmm;
+		ret = mmu_interval_notifier_insert(&notifier.notifier,
+						   svmm->notifier.mm,
+						   args.i.p.addr, args.i.p.size,
+						   &nouveau_svm_mni_ops);
+		if (!ret) {
+			ret = nouveau_range_fault(
+				svmm, svm->drm, &args,
+				sizeof(args.i) + pi * sizeof(args.phys[0]),
+				hmm_pfns, args.phys, &notifier);
+			mmu_interval_notifier_remove(&notifier.notifier);
 		}
+		mmput(mm);
 
 		/* Cancel any faults in the window whose pages didn't manage
 		 * to keep their valid bit, or stay writeable when required.
@@ -714,10 +804,10 @@ again:
 		 */
 		while (fi < fn) {
 			struct nouveau_svm_fault *fault = buffer->fault[fi++];
-			pi = (fault->addr - range.start) >> PAGE_SHIFT;
+			pi = (fault->addr - args.i.p.addr) >> PAGE_SHIFT;
 			if (ret ||
-			     !(range.pfns[pi] & NVIF_VMM_PFNMAP_V0_V) ||
-			    (!(range.pfns[pi] & NVIF_VMM_PFNMAP_V0_W) &&
+			     !(args.phys[pi] & NVIF_VMM_PFNMAP_V0_V) ||
+			    (!(args.phys[pi] & NVIF_VMM_PFNMAP_V0_W) &&
 			     fault->access != 0 && fault->access != 3)) {
 				nouveau_svm_fault_cancel_fault(svm, fault);
 				continue;
@@ -730,6 +820,56 @@ again:
 	if (replay)
 		nouveau_svm_fault_replay(svm);
 	return NVIF_NOTIFY_KEEP;
+}
+
+static struct nouveau_pfnmap_args *
+nouveau_pfns_to_args(void *pfns)
+{
+	return container_of(pfns, struct nouveau_pfnmap_args, p.phys);
+}
+
+u64 *
+nouveau_pfns_alloc(unsigned long npages)
+{
+	struct nouveau_pfnmap_args *args;
+
+	args = kzalloc(struct_size(args, p.phys, npages), GFP_KERNEL);
+	if (!args)
+		return NULL;
+
+	args->i.type = NVIF_IOCTL_V0_MTHD;
+	args->m.method = NVIF_VMM_V0_PFNMAP;
+	args->p.page = PAGE_SHIFT;
+
+	return args->p.phys;
+}
+
+void
+nouveau_pfns_free(u64 *pfns)
+{
+	struct nouveau_pfnmap_args *args = nouveau_pfns_to_args(pfns);
+
+	kfree(args);
+}
+
+void
+nouveau_pfns_map(struct nouveau_svmm *svmm, struct mm_struct *mm,
+		 unsigned long addr, u64 *pfns, unsigned long npages)
+{
+	struct nouveau_pfnmap_args *args = nouveau_pfns_to_args(pfns);
+	int ret;
+
+	args->p.addr = addr;
+	args->p.size = npages << PAGE_SHIFT;
+
+	mutex_lock(&svmm->mutex);
+
+	svmm->vmm->vmm.object.client->super = true;
+	ret = nvif_object_ioctl(&svmm->vmm->vmm.object, args, sizeof(*args) +
+				npages * sizeof(args->p.phys[0]), NULL);
+	svmm->vmm->vmm.object.client->super = false;
+
+	mutex_unlock(&svmm->mutex);
 }
 
 static void

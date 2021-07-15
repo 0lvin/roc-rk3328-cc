@@ -165,7 +165,7 @@ EXPORT_SYMBOL_GPL(of_property_read_u64_index);
  *
  * @np:		device node from which the property value is to be read.
  * @propname:	name of the property to be searched.
- * @out_values:	pointer to return value, modified only if return value is 0.
+ * @out_values:	pointer to found values.
  * @sz_min:	minimum number of array elements to read
  * @sz_max:	maximum number of array elements to read, if zero there is no
  *		upper limit on the number of elements in the dts entry but only
@@ -213,7 +213,7 @@ EXPORT_SYMBOL_GPL(of_property_read_variable_u8_array);
  *
  * @np:		device node from which the property value is to be read.
  * @propname:	name of the property to be searched.
- * @out_values:	pointer to return value, modified only if return value is 0.
+ * @out_values:	pointer to found values.
  * @sz_min:	minimum number of array elements to read
  * @sz_max:	maximum number of array elements to read, if zero there is no
  *		upper limit on the number of elements in the dts entry but only
@@ -261,7 +261,7 @@ EXPORT_SYMBOL_GPL(of_property_read_variable_u16_array);
  *
  * @np:		device node from which the property value is to be read.
  * @propname:	name of the property to be searched.
- * @out_values:	pointer to return value, modified only if return value is 0.
+ * @out_values:	pointer to return found values.
  * @sz_min:	minimum number of array elements to read
  * @sz_max:	maximum number of array elements to read, if zero there is no
  *		upper limit on the number of elements in the dts entry but only
@@ -335,7 +335,7 @@ EXPORT_SYMBOL_GPL(of_property_read_u64);
  *
  * @np:		device node from which the property value is to be read.
  * @propname:	name of the property to be searched.
- * @out_values:	pointer to return value, modified only if return value is 0.
+ * @out_values:	pointer to found values.
  * @sz_min:	minimum number of array elements to read
  * @sz_max:	maximum number of array elements to read, if zero there is no
  *		upper limit on the number of elements in the dts entry but only
@@ -1045,8 +1045,20 @@ static int of_link_to_phandle(struct device *dev, struct device_node *sup_np,
 	 * Find the device node that contains the supplier phandle.  It may be
 	 * @sup_np or it may be an ancestor of @sup_np.
 	 */
-	while (sup_np && !of_find_property(sup_np, "compatible", NULL))
+	while (sup_np) {
+
+		/* Don't allow linking to a disabled supplier */
+		if (!of_device_is_available(sup_np)) {
+			of_node_put(sup_np);
+			sup_np = NULL;
+		}
+
+		if (of_find_property(sup_np, "compatible", NULL))
+			break;
+
 		sup_np = of_get_next_parent(sup_np);
+	}
+
 	if (!sup_np) {
 		dev_dbg(dev, "Not linking to %pOFP - No device\n", tmp_np);
 		return -ENODEV;
@@ -1074,7 +1086,7 @@ static int of_link_to_phandle(struct device *dev, struct device_node *sup_np,
 		return -EAGAIN;
 	}
 	if (!device_link_add(dev, sup_dev, dl_flags))
-		ret = -EAGAIN;
+		ret = -EINVAL;
 	put_device(sup_dev);
 	return ret;
 }
@@ -1204,6 +1216,9 @@ DEFINE_SIMPLE_PROP(mboxes, "mboxes", "#mbox-cells")
 DEFINE_SIMPLE_PROP(io_channels, "io-channel", "#io-channel-cells")
 DEFINE_SIMPLE_PROP(interrupt_parent, "interrupt-parent", NULL)
 DEFINE_SIMPLE_PROP(dmas, "dmas", "#dma-cells")
+DEFINE_SIMPLE_PROP(power_domains, "power-domains", "#power-domain-cells")
+DEFINE_SIMPLE_PROP(hwlocks, "hwlocks", "#hwlock-cells")
+DEFINE_SIMPLE_PROP(extcon, "extcon", NULL)
 DEFINE_SUFFIX_PROP(regulators, "-supply", NULL)
 DEFINE_SUFFIX_PROP(gpio, "-gpio", "#gpio-cells")
 DEFINE_SUFFIX_PROP(gpios, "-gpios", "#gpio-cells")
@@ -1226,6 +1241,9 @@ static const struct supplier_bindings of_supplier_bindings[] = {
 	{ .parse_prop = parse_io_channels, },
 	{ .parse_prop = parse_interrupt_parent, },
 	{ .parse_prop = parse_dmas, },
+	{ .parse_prop = parse_power_domains, },
+	{ .parse_prop = parse_hwlocks, },
+	{ .parse_prop = parse_extcon, },
 	{ .parse_prop = parse_regulators, },
 	{ .parse_prop = parse_gpio, },
 	{ .parse_prop = parse_gpios, },
@@ -1262,7 +1280,7 @@ static int of_link_property(struct device *dev, struct device_node *con_np,
 	u32 dl_flags;
 
 	if (dev->of_node == con_np)
-		dl_flags = DL_FLAG_AUTOPROBE_CONSUMER;
+		dl_flags = fw_devlink_get_flags();
 	else
 		dl_flags = DL_FLAG_SYNC_STATE_ONLY;
 
@@ -1292,22 +1310,16 @@ static int of_link_to_suppliers(struct device *dev,
 		if (of_link_property(dev, con_np, p->name))
 			ret = -ENODEV;
 
-	for_each_child_of_node(con_np, child)
+	for_each_available_child_of_node(con_np, child)
 		if (of_link_to_suppliers(dev, child) && !ret)
 			ret = -EAGAIN;
 
 	return ret;
 }
 
-static bool of_devlink;
-core_param(of_devlink, of_devlink, bool, 0);
-
 static int of_fwnode_add_links(const struct fwnode_handle *fwnode,
 			       struct device *dev)
 {
-	if (!of_devlink)
-		return 0;
-
 	if (unlikely(!is_of_node(fwnode)))
 		return 0;
 

@@ -1132,21 +1132,21 @@ static int __init dccp_init(void)
 	int rc;
 
 	BUILD_BUG_ON(sizeof(struct dccp_skb_cb) >
-		     FIELD_SIZEOF(struct sk_buff, cb));
+		     sizeof_field(struct sk_buff, cb));
 	rc = percpu_counter_init(&dccp_orphan_count, 0, GFP_KERNEL);
 	if (rc)
 		goto out_fail;
 	inet_hashinfo_init(&dccp_hashinfo);
 	rc = inet_hashinfo2_init_mod(&dccp_hashinfo);
 	if (rc)
-		goto out_fail;
+		goto out_free_percpu;
 	rc = -ENOBUFS;
 	dccp_hashinfo.bind_bucket_cachep =
 		kmem_cache_create("dccp_bind_bucket",
 				  sizeof(struct inet_bind_bucket), 0,
 				  SLAB_HWCACHE_ALIGN, NULL);
 	if (!dccp_hashinfo.bind_bucket_cachep)
-		goto out_free_percpu;
+		goto out_free_hashinfo2;
 
 	/*
 	 * Size and allocate the main established and bind bucket
@@ -1242,6 +1242,8 @@ out_free_dccp_ehash:
 	free_pages((unsigned long)dccp_hashinfo.ehash, ehash_order);
 out_free_bind_bucket_cachep:
 	kmem_cache_destroy(dccp_hashinfo.bind_bucket_cachep);
+out_free_hashinfo2:
+	inet_hashinfo2_free_mod(&dccp_hashinfo);
 out_free_percpu:
 	percpu_counter_destroy(&dccp_orphan_count);
 out_fail:
@@ -1265,6 +1267,7 @@ static void __exit dccp_fini(void)
 	kmem_cache_destroy(dccp_hashinfo.bind_bucket_cachep);
 	dccp_ackvec_exit();
 	dccp_sysctl_exit();
+	inet_hashinfo2_free_mod(&dccp_hashinfo);
 	percpu_counter_destroy(&dccp_orphan_count);
 }
 

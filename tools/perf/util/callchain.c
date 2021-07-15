@@ -1106,7 +1106,7 @@ int hist_entry__append_callchain(struct hist_entry *he, struct perf_sample *samp
 int fill_callchain_info(struct addr_location *al, struct callchain_cursor_node *node,
 			bool hide_unresolved)
 {
-	al->mg	= node->ms.mg;
+	al->maps = node->ms.maps;
 	al->map = node->ms.map;
 	al->sym = node->ms.sym;
 	al->srcline = node->srcline;
@@ -1119,8 +1119,8 @@ int fill_callchain_info(struct addr_location *al, struct callchain_cursor_node *
 			goto out;
 	}
 
-	if (al->mg == &al->mg->machine->kmaps) {
-		if (machine__is_host(al->mg->machine)) {
+	if (al->maps == &al->maps->machine->kmaps) {
+		if (machine__is_host(al->maps->machine)) {
 			al->cpumode = PERF_RECORD_MISC_KERNEL;
 			al->level = 'k';
 		} else {
@@ -1128,7 +1128,7 @@ int fill_callchain_info(struct addr_location *al, struct callchain_cursor_node *
 			al->level = 'g';
 		}
 	} else {
-		if (machine__is_host(al->mg->machine)) {
+		if (machine__is_host(al->maps->machine)) {
 			al->cpumode = PERF_RECORD_MISC_USER;
 			al->level = '.';
 		} else if (perf_guest) {
@@ -1598,4 +1598,18 @@ void callchain_cursor_reset(struct callchain_cursor *cursor)
 
 	for (node = cursor->first; node != NULL; node = node->next)
 		map__zput(node->ms.map);
+}
+
+void callchain_param_setup(u64 sample_type)
+{
+	if (symbol_conf.use_callchain || symbol_conf.cumulate_callchain) {
+		if ((sample_type & PERF_SAMPLE_REGS_USER) &&
+		    (sample_type & PERF_SAMPLE_STACK_USER)) {
+			callchain_param.record_mode = CALLCHAIN_DWARF;
+			dwarf_callchain_users = true;
+		} else if (sample_type & PERF_SAMPLE_BRANCH_STACK)
+			callchain_param.record_mode = CALLCHAIN_LBR;
+		else
+			callchain_param.record_mode = CALLCHAIN_FP;
+	}
 }

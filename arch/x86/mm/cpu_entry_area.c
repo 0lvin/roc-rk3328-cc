@@ -4,9 +4,9 @@
 #include <linux/percpu.h>
 #include <linux/kallsyms.h>
 #include <linux/kcore.h>
+#include <linux/pgtable.h>
 
 #include <asm/cpu_entry_area.h>
-#include <asm/pgtable.h>
 #include <asm/fixmap.h>
 #include <asm/desc.h>
 
@@ -15,6 +15,10 @@ static DEFINE_PER_CPU_PAGE_ALIGNED(struct entry_stack_page, entry_stack_storage)
 #ifdef CONFIG_X86_64
 static DEFINE_PER_CPU_PAGE_ALIGNED(struct exception_stacks, exception_stacks);
 DEFINE_PER_CPU(struct cea_exception_stacks*, cea_exception_stacks);
+#endif
+
+#ifdef CONFIG_X86_32
+DECLARE_PER_CPU_PAGE_ALIGNED(struct doublefault_stack, doublefault_stack);
 #endif
 
 struct cpu_entry_area *get_cpu_entry_area(int cpu)
@@ -103,12 +107,17 @@ static void __init percpu_setup_exception_stacks(unsigned int cpu)
 	 */
 	cea_map_stack(DF);
 	cea_map_stack(NMI);
-	cea_map_stack(DB1);
 	cea_map_stack(DB);
 	cea_map_stack(MCE);
 }
 #else
-static inline void percpu_setup_exception_stacks(unsigned int cpu) {}
+static inline void percpu_setup_exception_stacks(unsigned int cpu)
+{
+	struct cpu_entry_area *cea = get_cpu_entry_area(cpu);
+
+	cea_map_percpu_pages(&cea->doublefault_stack,
+			     &per_cpu(doublefault_stack, cpu), 1, PAGE_KERNEL);
+}
 #endif
 
 /* Setup the fixmap mappings only once per-processor */

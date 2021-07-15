@@ -2,9 +2,11 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "gem/i915_gem_mman.h"
 #include "gt/intel_engine_user.h"
 
 #include "i915_drv.h"
+#include "i915_perf.h"
 
 int i915_getparam_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
@@ -79,8 +81,8 @@ int i915_getparam_ioctl(struct drm_device *dev, void *data,
 		break;
 	case I915_PARAM_HAS_GPU_RESET:
 		value = i915_modparams.enable_hangcheck &&
-			intel_has_gpu_reset(i915);
-		if (value && intel_has_reset_engine(i915))
+			intel_has_gpu_reset(&i915->gt);
+		if (value && intel_has_reset_engine(&i915->gt))
 			value = 2;
 		break;
 	case I915_PARAM_HAS_RESOURCE_STREAMER:
@@ -151,10 +153,13 @@ int i915_getparam_ioctl(struct drm_device *dev, void *data,
 			return -ENODEV;
 		break;
 	case I915_PARAM_CS_TIMESTAMP_FREQUENCY:
-		value = 1000 * RUNTIME_INFO(i915)->cs_timestamp_frequency_khz;
+		value = RUNTIME_INFO(i915)->cs_timestamp_frequency_hz;
 		break;
 	case I915_PARAM_MMAP_GTT_COHERENT:
 		value = INTEL_INFO(i915)->has_coherent_ggtt;
+		break;
+	case I915_PARAM_PERF_REVISION:
+		value = i915_perf_ioctl_version();
 		break;
 	default:
 		DRM_DEBUG("Unknown parameter %d\n", param->param);

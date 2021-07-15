@@ -1037,7 +1037,7 @@ static int ppl_recover(struct ppl_log *log, struct ppl_header *pplhdr,
 	}
 
 	/* flush the disk cache after recovery if necessary */
-	ret = blkdev_issue_flush(rdev->bdev, GFP_KERNEL, NULL);
+	ret = blkdev_issue_flush(rdev->bdev, GFP_KERNEL);
 out:
 	__free_page(page);
 	return ret;
@@ -1360,7 +1360,7 @@ int ppl_init_log(struct r5conf *conf)
 		return -EINVAL;
 	}
 
-	max_disks = FIELD_SIZEOF(struct ppl_log, disk_flush_bitmap) *
+	max_disks = sizeof_field(struct ppl_log, disk_flush_bitmap) *
 		BITS_PER_BYTE;
 	if (conf->raid_disks > max_disks) {
 		pr_warn("md/raid:%s PPL doesn't support over %d disks in the array\n",

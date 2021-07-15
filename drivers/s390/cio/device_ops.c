@@ -635,7 +635,7 @@ EXPORT_SYMBOL(ccw_device_tm_start_timeout);
  * @mask: mask of paths to use
  *
  * Return the number of 64K-bytes blocks all paths at least support
- * for a transport command. Return values <= 0 indicate failures.
+ * for a transport command. Return value 0 indicates failure.
  */
 int ccw_device_get_mdc(struct ccw_device *cdev, u8 mask)
 {
@@ -709,6 +709,29 @@ void ccw_device_get_schid(struct ccw_device *cdev, struct subchannel_id *schid)
 	*schid = sch->schid;
 }
 EXPORT_SYMBOL_GPL(ccw_device_get_schid);
+
+/**
+ * ccw_device_pnso() - Perform Network-Subchannel Operation
+ * @cdev:		device on which PNSO is performed
+ * @pnso_area:		request and response block for the operation
+ * @resume_token:	resume token for multiblock response
+ * @cnc:		Boolean change-notification control
+ *
+ * pnso_area must be allocated by the caller with get_zeroed_page(GFP_KERNEL)
+ *
+ * Returns 0 on success.
+ */
+int ccw_device_pnso(struct ccw_device *cdev,
+		    struct chsc_pnso_area *pnso_area,
+		    struct chsc_pnso_resume_token resume_token,
+		    int cnc)
+{
+	struct subchannel_id schid;
+
+	ccw_device_get_schid(cdev, &schid);
+	return chsc_pnso(schid, pnso_area, resume_token, cnc);
+}
+EXPORT_SYMBOL_GPL(ccw_device_pnso);
 
 /*
  * Allocate zeroed dma coherent 31 bit addressable memory using

@@ -387,12 +387,27 @@ static void __init get_fs_names(char *page)
 	*s = '\0';
 }
 
-static int __init do_mount_root(char *name, char *fs, int flags, void *data)
+static int __init do_mount_root(const char *name, const char *fs,
+				 const int flags, const void *data)
 {
 	struct super_block *s;
-	int err = ksys_mount(name, "/root", fs, flags, data);
-	if (err)
-		return err;
+	struct page *p = NULL;
+	char *data_page = NULL;
+	int ret;
+
+	if (data) {
+		/* do_mount() requires a full page as fifth argument */
+		p = alloc_page(GFP_KERNEL);
+		if (!p)
+			return -ENOMEM;
+		data_page = page_address(p);
+		/* zero-pad. do_mount() will make sure it's terminated */
+		strncpy(data_page, data, PAGE_SIZE);
+	}
+
+	ret = do_mount(name, "/root", fs, flags, data_page);
+	if (ret)
+		goto out;
 
 	ksys_chdir("/root");
 	s = current->fs->pwd.dentry->d_sb;
@@ -402,7 +417,11 @@ static int __init do_mount_root(char *name, char *fs, int flags, void *data)
 	       s->s_type->name,
 	       sb_rdonly(s) ? " readonly" : "",
 	       MAJOR(ROOT_DEV), MINOR(ROOT_DEV));
-	return 0;
+
+out:
+	if (p)
+		put_page(p);
+	return ret;
 }
 
 void __init mount_block_root(char *name, int flags)
@@ -410,12 +429,10 @@ void __init mount_block_root(char *name, int flags)
 	struct page *page = alloc_page(GFP_KERNEL);
 	char *fs_names = page_address(page);
 	char *p;
-#ifdef CONFIG_BLOCK
 	char b[BDEVNAME_SIZE];
-#else
-	const char *b = name;
-#endif
 
+	scnprintf(b, BDEVNAME_SIZE, "unknown-block(%u,%u)",
+		  MAJOR(ROOT_DEV), MINOR(ROOT_DEV));
 	get_fs_names(fs_names);
 retry:
 	for (p = fs_names; *p; p += strlen(p)+1) {
@@ -432,9 +449,6 @@ retry:
 		 * and bad superblock on root device.
 		 * and give them a list of the available devices
 		 */
-#ifdef CONFIG_BLOCK
-		__bdevname(ROOT_DEV, b);
-#endif
 		printk("VFS: Cannot open root device \"%s\" or %s: error %d\n",
 				root_device_name, b, err);
 		printk("Please append a correct \"root=\" boot option; here are the available partitions:\n");
@@ -457,9 +471,6 @@ retry:
 	for (p = fs_names; *p; p += strlen(p)+1)
 		printk(" %s", p);
 	printk("\n");
-#ifdef CONFIG_BLOCK
-	__bdevname(ROOT_DEV, b);
-#endif
 	panic("VFS: Unable to mount root fs on %s", b);
 out:
 	put_page(page);
@@ -670,8 +681,8 @@ void __init prepare_namespace(void)
 
 	mount_root();
 out:
-	devtmpfs_mount("dev");
-	ksys_mount(".", "/", NULL, MS_MOVE, NULL);
+	devtmpfs_mount();
+	do_mount(".", "/", NULL, MS_MOVE, NULL);
 	ksys_chroot(".");
 }
 

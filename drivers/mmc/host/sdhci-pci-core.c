@@ -27,6 +27,7 @@
 #include <linux/mmc/slot-gpio.h>
 #include <linux/mmc/sdhci-pci-data.h>
 #include <linux/acpi.h>
+#include <linux/dmi.h>
 
 #ifdef CONFIG_X86
 #include <asm/iosf_mbi.h>
@@ -248,12 +249,8 @@ static int ricoh_probe(struct sdhci_pci_chip *chip)
 static int ricoh_mmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	slot->host->caps =
-		((0x21 << SDHCI_TIMEOUT_CLK_SHIFT)
-			& SDHCI_TIMEOUT_CLK_MASK) |
-
-		((0x21 << SDHCI_CLOCK_BASE_SHIFT)
-			& SDHCI_CLOCK_BASE_MASK) |
-
+		FIELD_PREP(SDHCI_TIMEOUT_CLK_MASK, 0x21) |
+		FIELD_PREP(SDHCI_CLOCK_BASE_MASK, 0x21) |
 		SDHCI_TIMEOUT_CLK_UNIT |
 		SDHCI_CAN_VDD_330 |
 		SDHCI_CAN_DO_HISPD |
@@ -600,6 +597,9 @@ static int intel_select_drive_strength(struct mmc_card *card,
 	struct sdhci_pci_slot *slot = sdhci_priv(host);
 	struct intel_host *intel_host = sdhci_pci_priv(slot);
 
+	if (!(mmc_driver_type_mask(intel_host->drv_strength) & card_drv))
+		return 0;
+
 	return intel_host->drv_strength;
 }
 
@@ -783,11 +783,18 @@ static int byt_emmc_probe_slot(struct sdhci_pci_slot *slot)
 	return 0;
 }
 
+static bool glk_broken_cqhci(struct sdhci_pci_slot *slot)
+{
+	return slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_GLK_EMMC &&
+	       dmi_match(DMI_BIOS_VENDOR, "LENOVO");
+}
+
 static int glk_emmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int ret = byt_emmc_probe_slot(slot);
 
-	slot->host->mmc->caps2 |= MMC_CAP2_CQE;
+	if (!glk_broken_cqhci(slot))
+		slot->host->mmc->caps2 |= MMC_CAP2_CQE;
 
 	if (slot->chip->pdev->device != PCI_DEVICE_ID_INTEL_GLK_EMMC) {
 		slot->host->mmc->caps2 |= MMC_CAP2_HS400_ES,
@@ -1738,6 +1745,7 @@ static const struct pci_device_id pci_ids[] = {
 	SDHCI_PCI_DEVICE(SYNOPSYS, DWC_MSHC, snps),
 	SDHCI_PCI_DEVICE(GLI, 9750, gl9750),
 	SDHCI_PCI_DEVICE(GLI, 9755, gl9755),
+	SDHCI_PCI_DEVICE(GLI, 9763E, gl9763e),
 	SDHCI_PCI_DEVICE_CLASS(AMD, SYSTEM_SDHCI, PCI_CLASS_MASK, amd),
 	/* Generic SD host controller */
 	{PCI_DEVICE_CLASS(SYSTEM_SDHCI, PCI_CLASS_MASK)},
@@ -1983,12 +1991,12 @@ static struct sdhci_pci_slot *sdhci_pci_probe_slot(
 
 	if (slot->cd_idx >= 0) {
 		ret = mmc_gpiod_request_cd(host->mmc, "cd", slot->cd_idx,
-					   slot->cd_override_level, 0, NULL);
+					   slot->cd_override_level, 0);
 		if (ret && ret != -EPROBE_DEFER)
 			ret = mmc_gpiod_request_cd(host->mmc, NULL,
 						   slot->cd_idx,
 						   slot->cd_override_level,
-						   0, NULL);
+						   0);
 		if (ret == -EPROBE_DEFER)
 			goto remove;
 

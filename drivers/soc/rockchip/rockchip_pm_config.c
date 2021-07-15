@@ -14,7 +14,7 @@
 #include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/machine.h>
-#include <linux/rockchip/rockchip_sip.h>
+#include <soc/rockchip/rockchip_sip.h>
 #include <linux/suspend.h>
 #include <dt-bindings/input/input.h>
 
@@ -35,7 +35,7 @@ static void rockchip_pm_virt_pwroff_prepare(void)
 
 	regulator_suspend_prepare(PM_SUSPEND_MEM);
 
-	error = disable_nonboot_cpus();
+	error = freeze_secondary_cpus(0);
 	if (error) {
 		pr_err("Disable nonboot cpus failed!\n");
 		return;

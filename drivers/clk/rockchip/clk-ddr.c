@@ -9,11 +9,7 @@
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/of.h>
-#include <drm/drmP.h>
-#include <drm/drm_modeset_lock.h>
 #include <dt-bindings/display/rk_fb.h>
-#include <linux/rockchip/rockchip_sip.h>
-#include <uapi/drm/drm_mode.h>
 #include <linux/slab.h>
 #include <soc/rockchip/rockchip_sip.h>
 #include "clk.h"
@@ -33,60 +29,6 @@ struct rockchip_ddrclk {
 };
 
 #define to_rockchip_ddrclk_hw(hw) container_of(hw, struct rockchip_ddrclk, hw)
-#ifdef CONFIG_DRM
-struct drm_device *drm_device_get_by_name(const char *name);
-#else
-static inline struct drm_device *drm_device_get_by_name(const char *name)
-{
-	return NULL;
-}
-#endif
-
-static int rk_drm_get_lcdc_type(void)
-{
-	struct drm_device *drm;
-	u32 lcdc_type = 0;
-
-	drm = drm_device_get_by_name("rockchip");
-	if (drm) {
-		struct drm_connector *conn;
-
-		list_for_each_entry(conn, &drm->mode_config.connector_list,
-				    head) {
-			if (conn->encoder) {
-				lcdc_type = conn->connector_type;
-				break;
-			}
-		}
-	}
-
-	switch (lcdc_type) {
-	case DRM_MODE_CONNECTOR_LVDS:
-		lcdc_type = SCREEN_LVDS;
-		break;
-	case DRM_MODE_CONNECTOR_DisplayPort:
-		lcdc_type = SCREEN_DP;
-		break;
-	case DRM_MODE_CONNECTOR_HDMIA:
-	case DRM_MODE_CONNECTOR_HDMIB:
-		lcdc_type = SCREEN_HDMI;
-		break;
-	case DRM_MODE_CONNECTOR_TV:
-		lcdc_type = SCREEN_TVOUT;
-		break;
-	case DRM_MODE_CONNECTOR_eDP:
-		lcdc_type = SCREEN_EDP;
-		break;
-	case DRM_MODE_CONNECTOR_DSI:
-		lcdc_type = SCREEN_MIPI;
-		break;
-	default:
-		lcdc_type = SCREEN_NULL;
-		break;
-	}
-
-	return lcdc_type;
-}
 
 static int rockchip_ddrclk_sip_set_rate(struct clk_hw *hw, unsigned long drate,
 					unsigned long prate)
@@ -151,7 +93,6 @@ static const struct clk_ops rockchip_ddrclk_sip_ops = {
 
 struct share_params {
 	u32 hz;
-	u32 lcdc_type;
 	u32 vop;
 	u32 vop_dclk_mode;
 	u32 sr_idle_en;
@@ -201,12 +142,12 @@ static int rockchip_ddrclk_sip_set_rate_v2(struct clk_hw *hw,
 	p = (struct share_params *)ddr_data.share_memory;
 
 	p->hz = drate;
-	p->lcdc_type = rk_drm_get_lcdc_type();
 	p->wait_flag1 = 1;
 	p->wait_flag0 = 1;
 
-	res = sip_smc_dram(SHARE_PAGE_TYPE_DDR, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_SET_RATE);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, SHARE_PAGE_TYPE_DDR, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_SET_RATE,
+		      0, 0, 0, 0, &res);
 
 	return res.a0;
 }
@@ -216,8 +157,9 @@ static unsigned long rockchip_ddrclk_sip_recalc_rate_v2
 {
 	struct arm_smccc_res res;
 
-	res = sip_smc_dram(SHARE_PAGE_TYPE_DDR, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_GET_RATE);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, SHARE_PAGE_TYPE_DDR, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_GET_RATE,
+		      0, 0, 0, 0, &res);
 	if (!res.a0)
 		return res.a1;
 	else
@@ -238,8 +180,9 @@ static long rockchip_ddrclk_sip_round_rate_v2(struct clk_hw *hw,
 
 	p->hz = rate;
 
-	res = sip_smc_dram(SHARE_PAGE_TYPE_DDR, 0,
-			   ROCKCHIP_SIP_CONFIG_DRAM_ROUND_RATE);
+	arm_smccc_smc(ROCKCHIP_SIP_DRAM_FREQ, SHARE_PAGE_TYPE_DDR, 0,
+		      ROCKCHIP_SIP_CONFIG_DRAM_ROUND_RATE,
+		      0, 0, 0, 0, &res);
 	if (!res.a0)
 		return res.a1;
 	else

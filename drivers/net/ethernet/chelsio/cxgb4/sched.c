@@ -57,7 +57,8 @@ static int t4_sched_class_fw_cmd(struct port_info *pi,
 				      p->u.params.ratemode,
 				      p->u.params.channel, e->idx,
 				      p->u.params.minrate, p->u.params.maxrate,
-				      p->u.params.weight, p->u.params.pktsize);
+				      p->u.params.weight, p->u.params.pktsize,
+				      p->u.params.burstsize);
 		break;
 	default:
 		err = -ENOTSUPP;
@@ -163,6 +164,22 @@ static void *t4_sched_entry_lookup(struct port_info *pi,
 	}
 
 	return found;
+}
+
+struct sched_class *cxgb4_sched_queue_lookup(struct net_device *dev,
+					     struct ch_sched_queue *p)
+{
+	struct port_info *pi = netdev2pinfo(dev);
+	struct sched_queue_entry *qe = NULL;
+	struct adapter *adap = pi->adapter;
+	struct sge_eth_txq *txq;
+
+	if (p->queue < 0 || p->queue >= pi->nqsets)
+		return NULL;
+
+	txq = &adap->sge.ethtxq[pi->first_qset + p->queue];
+	qe = t4_sched_entry_lookup(pi, SCHED_QUEUE, txq->q.cntxt_id);
+	return qe ? &pi->sched_tbl->tab[qe->param.class] : NULL;
 }
 
 static int t4_sched_queue_unbind(struct port_info *pi, struct ch_sched_queue *p)
@@ -581,7 +598,7 @@ struct sched_class *cxgb4_sched_class_alloc(struct net_device *dev,
 /**
  * cxgb4_sched_class_free - free a scheduling class
  * @dev: net_device pointer
- * @e: scheduling class
+ * @classid: scheduling class id to free
  *
  * Frees a scheduling class if there are no users.
  */

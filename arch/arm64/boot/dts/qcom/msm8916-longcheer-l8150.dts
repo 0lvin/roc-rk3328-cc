@@ -5,6 +5,7 @@
 #include "msm8916.dtsi"
 #include "pm8916.dtsi"
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
 
 / {
 	model = "Longcheer L8150";
@@ -16,6 +17,16 @@
 
 	chosen {
 		stdout-path = "serial0";
+	};
+
+	reserved-memory {
+		// wcnss.mdt is not relocatable, so it must be loaded at 0x8b600000
+		/delete-node/ wcnss@89300000;
+
+		wcnss_mem: wcnss@8b600000 {
+			reg = <0x0 0x8b600000 0x0 0x600000>;
+			no-map;
+		};
 	};
 
 	soc {
@@ -68,28 +79,9 @@
 			};
 		};
 
-		/*
-		 * Attempting to enable these devices causes a "synchronous
-		 * external abort". Suspected cause is that the debug power
-		 * domain is not enabled by default on this device.
-		 * Disable these devices for now to avoid the crash.
-		 *
-		 * See: https://lore.kernel.org/linux-arm-msm/20190618202623.GA53651@gerhold.net/
-		 */
-		tpiu@820000 { status = "disabled"; };
-		funnel@821000 { status = "disabled"; };
-		replicator@824000 { status = "disabled"; };
-		etf@825000 { status = "disabled"; };
-		etr@826000 { status = "disabled"; };
-		funnel@841000 { status = "disabled"; };
-		debug@850000 { status = "disabled"; };
-		debug@852000 { status = "disabled"; };
-		debug@854000 { status = "disabled"; };
-		debug@856000 { status = "disabled"; };
-		etm@85c000 { status = "disabled"; };
-		etm@85d000 { status = "disabled"; };
-		etm@85e000 { status = "disabled"; };
-		etm@85f000 { status = "disabled"; };
+		wcnss@a21b000 {
+			status = "okay";
+		};
 	};
 
 	// FIXME: Use extcon device provided by charger driver when available
@@ -99,9 +91,36 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&usb_vbus_default>;
 	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&gpio_keys_default>;
+
+		label = "GPIO Buttons";
+
+		volume-up {
+			label = "Volume Up";
+			gpios = <&msmgpio 107 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_VOLUMEUP>;
+		};
+	};
 };
 
 &msmgpio {
+	gpio_keys_default: gpio-keys-default {
+		pinmux {
+			function = "gpio";
+			pins = "gpio107";
+		};
+		pinconf {
+			pins = "gpio107";
+			drive-strength = <2>;
+			bias-pull-up;
+		};
+	};
+
 	usb_vbus_default: usb-vbus-default {
 		pinmux {
 			function = "gpio";
@@ -110,6 +129,19 @@
 		pinconf {
 			pins = "gpio62";
 			bias-pull-up;
+		};
+	};
+};
+
+&spmi_bus {
+	pm8916@0 {
+		pon@800 {
+			volume-down {
+				compatible = "qcom,pm8941-resin";
+				interrupts = <0x0 0x8 1 IRQ_TYPE_EDGE_BOTH>;
+				bias-pull-up;
+				linux,code = <KEY_VOLUMEDOWN>;
+			};
 		};
 	};
 };

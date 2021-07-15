@@ -1099,7 +1099,7 @@ static int rk322xh_u3phy_calibrate_enable(struct rockchip_u3phy *u3phy,
 		writel(0x0c, u3phy_port->base + 0x408);
 	} else {
 		dev_err(u3phy->dev, "The u3phy type is not pipe\n");
-		return -EINVAL;
+		// return -EINVAL;
 	}
 
 	return 0;

@@ -54,7 +54,6 @@ struct cpuidle_state {
 	unsigned int	exit_latency; /* in US */
 	int		power_usage; /* in mW */
 	unsigned int	target_residency; /* in US */
-	bool		disabled; /* disabled on all CPUs */
 
 	int (*enter)	(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv,
@@ -77,6 +76,8 @@ struct cpuidle_state {
 #define CPUIDLE_FLAG_POLLING	BIT(0) /* polling state */
 #define CPUIDLE_FLAG_COUPLED	BIT(1) /* state applies to multiple cpus */
 #define CPUIDLE_FLAG_TIMER_STOP BIT(2) /* timer is stopped on this state */
+#define CPUIDLE_FLAG_UNUSABLE	BIT(3) /* avoid using this state */
+#define CPUIDLE_FLAG_OFF	BIT(4) /* disable this state by default */
 
 struct cpuidle_device_kobj;
 struct cpuidle_state_kobj;
@@ -115,7 +116,6 @@ DECLARE_PER_CPU(struct cpuidle_device, cpuidle_dev);
 struct cpuidle_driver {
 	const char		*name;
 	struct module 		*owner;
-	int                     refcnt;
 
         /* used by the cpuidle framework to setup the broadcast timer */
 	unsigned int            bctimer:1;
@@ -147,8 +147,6 @@ extern u64 cpuidle_poll_time(struct cpuidle_driver *drv,
 
 extern int cpuidle_register_driver(struct cpuidle_driver *drv);
 extern struct cpuidle_driver *cpuidle_get_driver(void);
-extern struct cpuidle_driver *cpuidle_driver_ref(void);
-extern void cpuidle_driver_unref(void);
 extern void cpuidle_driver_state_disabled(struct cpuidle_driver *drv, int idx,
 					bool disable);
 extern void cpuidle_unregister_driver(struct cpuidle_driver *drv);
@@ -186,8 +184,6 @@ static inline u64 cpuidle_poll_time(struct cpuidle_driver *drv,
 static inline int cpuidle_register_driver(struct cpuidle_driver *drv)
 {return -ENODEV; }
 static inline struct cpuidle_driver *cpuidle_get_driver(void) {return NULL; }
-static inline struct cpuidle_driver *cpuidle_driver_ref(void) {return NULL; }
-static inline void cpuidle_driver_unref(void) {}
 static inline void cpuidle_driver_state_disabled(struct cpuidle_driver *drv,
 					       int idx, bool disable) { }
 static inline void cpuidle_unregister_driver(struct cpuidle_driver *drv) { }

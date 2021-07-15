@@ -4,7 +4,7 @@
 
 #include <sys/types.h>
 #include <linux/rbtree.h>
-#include "map_groups.h"
+#include "maps.h"
 #include "dsos.h"
 #include "rwsem.h"
 
@@ -51,7 +51,7 @@ struct machine {
 	struct vdso_info  *vdso_info;
 	struct perf_env   *env;
 	struct dsos	  dsos;
-	struct map_groups kmaps;
+	struct maps	  kmaps;
 	struct map	  *vmlinux_map;
 	u64		  kernel_start;
 	pid_t		  *current_tid;
@@ -83,7 +83,7 @@ struct map *machine__kernel_map(struct machine *machine)
 static inline
 struct maps *machine__kernel_maps(struct machine *machine)
 {
-	return &machine->kmaps.maps;
+	return &machine->kmaps;
 }
 
 int machine__get_kernel_start(struct machine *machine);
@@ -128,6 +128,9 @@ int machine__process_switch_event(struct machine *machine,
 int machine__process_namespaces_event(struct machine *machine,
 				      union perf_event *event,
 				      struct perf_sample *sample);
+int machine__process_cgroup_event(struct machine *machine,
+				  union perf_event *event,
+				  struct perf_sample *sample);
 int machine__process_mmap_event(struct machine *machine, union perf_event *event,
 				struct perf_sample *sample);
 int machine__process_mmap2_event(struct machine *machine, union perf_event *event,
@@ -212,7 +215,7 @@ static inline
 struct symbol *machine__find_kernel_symbol(struct machine *machine, u64 addr,
 					   struct map **mapp)
 {
-	return map_groups__find_symbol(&machine->kmaps, addr, mapp);
+	return maps__find_symbol(&machine->kmaps, addr, mapp);
 }
 
 static inline
@@ -220,7 +223,7 @@ struct symbol *machine__find_kernel_symbol_by_name(struct machine *machine,
 						   const char *name,
 						   struct map **mapp)
 {
-	return map_groups__find_symbol_by_name(&machine->kmaps, name, mapp);
+	return maps__find_symbol_by_name(&machine->kmaps, name, mapp);
 }
 
 int arch__fix_module_text_start(u64 *start, u64 *size, const char *name);

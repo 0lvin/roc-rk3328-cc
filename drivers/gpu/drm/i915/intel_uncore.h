@@ -209,7 +209,11 @@ void intel_uncore_forcewake_get(struct intel_uncore *uncore,
 				enum forcewake_domains domains);
 void intel_uncore_forcewake_put(struct intel_uncore *uncore,
 				enum forcewake_domains domains);
-/* Like above but the caller must manage the uncore.lock itself.
+void intel_uncore_forcewake_flush(struct intel_uncore *uncore,
+				  enum forcewake_domains fw_domains);
+
+/*
+ * Like above but the caller must manage the uncore.lock itself.
  * Must be used with I915_READ_FW and friends.
  */
 void intel_uncore_forcewake_get__locked(struct intel_uncore *uncore,
@@ -378,23 +382,23 @@ intel_uncore_read64_2x32(struct intel_uncore *uncore,
 static inline void intel_uncore_rmw(struct intel_uncore *uncore,
 				    i915_reg_t reg, u32 clear, u32 set)
 {
-	u32 val;
+	u32 old, val;
 
-	val = intel_uncore_read(uncore, reg);
-	val &= ~clear;
-	val |= set;
-	intel_uncore_write(uncore, reg, val);
+	old = intel_uncore_read(uncore, reg);
+	val = (old & ~clear) | set;
+	if (val != old)
+		intel_uncore_write(uncore, reg, val);
 }
 
 static inline void intel_uncore_rmw_fw(struct intel_uncore *uncore,
 				       i915_reg_t reg, u32 clear, u32 set)
 {
-	u32 val;
+	u32 old, val;
 
-	val = intel_uncore_read_fw(uncore, reg);
-	val &= ~clear;
-	val |= set;
-	intel_uncore_write_fw(uncore, reg, val);
+	old = intel_uncore_read_fw(uncore, reg);
+	val = (old & ~clear) | set;
+	if (val != old)
+		intel_uncore_write_fw(uncore, reg, val);
 }
 
 static inline int intel_uncore_write_and_verify(struct intel_uncore *uncore,

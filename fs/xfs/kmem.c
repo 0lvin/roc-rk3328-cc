@@ -32,7 +32,7 @@ kmem_alloc(size_t size, xfs_km_flags_t flags)
 
 
 /*
- * __vmalloc() will allocate data pages and auxillary structures (e.g.
+ * __vmalloc() will allocate data pages and auxiliary structures (e.g.
  * pagetables) with GFP_KERNEL, yet we may be under GFP_NOFS context here. Hence
  * we need to tell memory reclaim that we are in such a context via
  * PF_MEMALLOC_NOFS to prevent memory reclaim re-entering the filesystem here
@@ -48,7 +48,7 @@ __kmem_vmalloc(size_t size, xfs_km_flags_t flags)
 	if (flags & KM_NOFS)
 		nofs_flag = memalloc_nofs_save();
 
-	ptr = __vmalloc(size, lflags, PAGE_KERNEL);
+	ptr = __vmalloc(size, lflags);
 
 	if (flags & KM_NOFS)
 		memalloc_nofs_restore(nofs_flag);

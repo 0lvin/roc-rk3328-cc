@@ -210,6 +210,29 @@ struct ftrace_ops {
 #endif
 };
 
+extern struct ftrace_ops __rcu *ftrace_ops_list;
+extern struct ftrace_ops ftrace_list_end;
+
+/*
+ * Traverse the ftrace_global_list, invoking all entries.  The reason that we
+ * can use rcu_dereference_raw_check() is that elements removed from this list
+ * are simply leaked, so there is no need to interact with a grace-period
+ * mechanism.  The rcu_dereference_raw_check() calls are needed to handle
+ * concurrent insertions into the ftrace_global_list.
+ *
+ * Silly Alpha and silly pointer-speculation compiler optimizations!
+ */
+#define do_for_each_ftrace_op(op, list)			\
+	op = rcu_dereference_raw_check(list);			\
+	do
+
+/*
+ * Optimized for just a single item in the list (as that is the normal case).
+ */
+#define while_for_each_ftrace_op(op)				\
+	while (likely(op = rcu_dereference_raw_check((op)->next)) &&	\
+	       unlikely((op) != &ftrace_list_end))
+
 /*
  * Type of the current tracing.
  */
@@ -264,6 +287,7 @@ int ftrace_modify_direct_caller(struct ftrace_func_entry *entry,
 				struct dyn_ftrace *rec,
 				unsigned long old_addr,
 				unsigned long new_addr);
+unsigned long ftrace_find_rec_direct(unsigned long ip);
 #else
 # define ftrace_direct_func_count 0
 static inline int register_ftrace_direct(unsigned long ip, unsigned long addr)
@@ -290,6 +314,10 @@ static inline int ftrace_modify_direct_caller(struct ftrace_func_entry *entry,
 {
 	return -ENODEV;
 }
+static inline unsigned long ftrace_find_rec_direct(unsigned long ip)
+{
+	return 0;
+}
 #endif /* CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS */
 
 #ifndef CONFIG_HAVE_DYNAMIC_FTRACE_WITH_DIRECT_CALLS
@@ -314,9 +342,8 @@ static inline void arch_ftrace_set_direct_caller(struct pt_regs *regs,
 
 extern int stack_tracer_enabled;
 
-int stack_trace_sysctl(struct ctl_table *table, int write,
-		       void __user *buffer, size_t *lenp,
-		       loff_t *ppos);
+int stack_trace_sysctl(struct ctl_table *table, int write, void *buffer,
+		       size_t *lenp, loff_t *ppos);
 
 /* DO NOT MODIFY THIS VARIABLE DIRECTLY! */
 DECLARE_PER_CPU(int, disable_stack_tracer);
@@ -1000,8 +1027,7 @@ extern void disable_trace_on_warning(void);
 extern int __disable_trace_on_warning;
 
 int tracepoint_printk_sysctl(struct ctl_table *table, int write,
-			     void __user *buffer, size_t *lenp,
-			     loff_t *ppos);
+			     void *buffer, size_t *lenp, loff_t *ppos);
 
 #else /* CONFIG_TRACING */
 static inline void  disable_trace_on_warning(void) { }

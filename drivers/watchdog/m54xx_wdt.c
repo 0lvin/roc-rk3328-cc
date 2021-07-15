@@ -29,6 +29,7 @@
 #include <linux/bitops.h>
 #include <linux/ioport.h>
 #include <linux/uaccess.h>
+#include <linux/io.h>
 
 #include <asm/coldfire.h>
 #include <asm/m54xxsim.h>
@@ -183,6 +184,7 @@ static const struct file_operations m54xx_wdt_fops = {
 	.llseek		= no_llseek,
 	.write		= m54xx_wdt_write,
 	.unlocked_ioctl	= m54xx_wdt_ioctl,
+	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= m54xx_wdt_open,
 	.release	= m54xx_wdt_release,
 };

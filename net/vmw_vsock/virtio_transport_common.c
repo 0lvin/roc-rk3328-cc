@@ -11,9 +11,6 @@
 #include <linux/sched/signal.h>
 #include <linux/ctype.h>
 #include <linux/list.h>
-#include <linux/virtio.h>
-#include <linux/virtio_ids.h>
-#include <linux/virtio_config.h>
 #include <linux/virtio_vsock.h>
 #include <uapi/linux/vsockmon.h>
 
@@ -33,6 +30,9 @@ static const struct virtio_transport *
 virtio_transport_get_ops(struct vsock_sock *vsk)
 {
 	const struct vsock_transport *t = vsock_core_get_transport(vsk);
+
+	if (WARN_ON(!t))
+		return NULL;
 
 	return container_of(t, struct virtio_transport, transport);
 }
@@ -157,19 +157,33 @@ static struct sk_buff *virtio_transport_build_skb(void *opaque)
 
 void virtio_transport_deliver_tap_pkt(struct virtio_vsock_pkt *pkt)
 {
+	if (pkt->tap_delivered)
+		return;
+
 	vsock_deliver_tap(virtio_transport_build_skb, pkt);
+	pkt->tap_delivered = true;
 }
 EXPORT_SYMBOL_GPL(virtio_transport_deliver_tap_pkt);
 
+/* This function can only be used on connecting/connected sockets,
+ * since a socket assigned to a transport is required.
+ *
+ * Do not use on listener sockets!
+ */
 static int virtio_transport_send_pkt_info(struct vsock_sock *vsk,
 					  struct virtio_vsock_pkt_info *info)
 {
 	u32 src_cid, src_port, dst_cid, dst_port;
+	const struct virtio_transport *t_ops;
 	struct virtio_vsock_sock *vvs;
 	struct virtio_vsock_pkt *pkt;
 	u32 pkt_len = info->pkt_len;
 
-	src_cid = virtio_transport_get_ops(vsk)->transport.get_local_cid();
+	t_ops = virtio_transport_get_ops(vsk);
+	if (unlikely(!t_ops))
+		return -EFAULT;
+
+	src_cid = t_ops->transport.get_local_cid();
 	src_port = vsk->local_addr.svm_port;
 	if (!info->remote_cid) {
 		dst_cid	= vsk->remote_addr.svm_cid;
@@ -202,7 +216,7 @@ static int virtio_transport_send_pkt_info(struct vsock_sock *vsk,
 
 	virtio_transport_inc_tx_pkt(vvs, pkt);
 
-	return virtio_transport_get_ops(vsk)->send_pkt(pkt);
+	return t_ops->send_pkt(pkt);
 }
 
 static bool virtio_transport_inc_rx_pkt(struct virtio_vsock_sock *vvs,
@@ -819,7 +833,6 @@ void virtio_transport_release(struct vsock_sock *vsk)
 	struct sock *sk = &vsk->sk;
 	bool remove_sock = true;
 
-	lock_sock_nested(sk, SINGLE_DEPTH_NESTING);
 	if (sk->sk_type == SOCK_STREAM)
 		remove_sock = virtio_transport_close(vsk);
 
@@ -827,7 +840,6 @@ void virtio_transport_release(struct vsock_sock *vsk)
 		list_del(&pkt->list);
 		virtio_transport_free_pkt(pkt);
 	}
-	release_sock(sk);
 
 	if (remove_sock)
 		vsock_remove_sock(vsk);
@@ -1021,18 +1033,18 @@ virtio_transport_recv_listen(struct sock *sk, struct virtio_vsock_pkt *pkt,
 	int ret;
 
 	if (le16_to_cpu(pkt->hdr.op) != VIRTIO_VSOCK_OP_REQUEST) {
-		virtio_transport_reset(vsk, pkt);
+		virtio_transport_reset_no_sock(t, pkt);
 		return -EINVAL;
 	}
 
 	if (sk_acceptq_is_full(sk)) {
-		virtio_transport_reset(vsk, pkt);
+		virtio_transport_reset_no_sock(t, pkt);
 		return -ENOMEM;
 	}
 
 	child = vsock_create_connected(sk);
 	if (!child) {
-		virtio_transport_reset(vsk, pkt);
+		virtio_transport_reset_no_sock(t, pkt);
 		return -ENOMEM;
 	}
 
@@ -1054,7 +1066,7 @@ virtio_transport_recv_listen(struct sock *sk, struct virtio_vsock_pkt *pkt,
 	 */
 	if (ret || vchild->transport != &t->transport) {
 		release_sock(child);
-		virtio_transport_reset(vsk, pkt);
+		virtio_transport_reset_no_sock(t, pkt);
 		sock_put(child);
 		return ret;
 	}
@@ -1120,6 +1132,14 @@ void virtio_transport_recv_pkt(struct virtio_transport *t,
 
 	lock_sock(sk);
 
+	/* Check if sk has been released before lock_sock */
+	if (sk->sk_shutdown == SHUTDOWN_MASK) {
+		(void)virtio_transport_reset_no_sock(t, pkt);
+		release_sock(sk);
+		sock_put(sk);
+		goto free_pkt;
+	}
+
 	/* Update CID in case it has changed after a transport reset event */
 	vsk->local_addr.svm_cid = dst.svm_cid;
 
@@ -1143,6 +1163,7 @@ void virtio_transport_recv_pkt(struct virtio_transport *t,
 		virtio_transport_free_pkt(pkt);
 		break;
 	default:
+		(void)virtio_transport_reset_no_sock(t, pkt);
 		virtio_transport_free_pkt(pkt);
 		break;
 	}

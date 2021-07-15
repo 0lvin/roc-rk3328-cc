@@ -23,6 +23,7 @@
 #include <net/addrconf.h>
 #include <net/ip6_route.h>
 #include <net/dst_cache.h>
+#include <net/ip_tunnels.h>
 #ifdef CONFIG_IPV6_SEG6_HMAC
 #include <net/seg6_hmac.h>
 #endif
@@ -86,7 +87,7 @@ static struct ipv6_sr_hdr *get_srh(struct sk_buff *skb)
 	 */
 	srh = (struct ipv6_sr_hdr *)(skb->data + srhoff);
 
-	if (!seg6_validate_srh(srh, len))
+	if (!seg6_validate_srh(srh, len, true))
 		return NULL;
 
 	return srh;
@@ -135,7 +136,8 @@ static bool decap_and_validate(struct sk_buff *skb, int proto)
 
 	skb_reset_network_header(skb);
 	skb_reset_transport_header(skb);
-	skb->encapsulation = 0;
+	if (iptunnel_pull_offloads(skb))
+		return false;
 
 	return true;
 }
@@ -280,7 +282,7 @@ static int input_action_end_dx2(struct sk_buff *skb,
 	struct net_device *odev;
 	struct ethhdr *eth;
 
-	if (!decap_and_validate(skb, NEXTHDR_NONE))
+	if (!decap_and_validate(skb, IPPROTO_ETHERNET))
 		goto drop;
 
 	if (!pskb_may_pull(skb, ETH_HLEN))
@@ -493,7 +495,7 @@ bool seg6_bpf_has_valid_srh(struct sk_buff *skb)
 			return false;
 
 		srh->hdrlen = (u8)(srh_state->hdrlen >> 3);
-		if (!seg6_validate_srh(srh, (srh->hdrlen + 1) << 3))
+		if (!seg6_validate_srh(srh, (srh->hdrlen + 1) << 3, true))
 			return false;
 
 		srh_state->valid = true;
@@ -668,7 +670,7 @@ static int parse_nla_srh(struct nlattr **attrs, struct seg6_local_lwt *slwt)
 	if (len < sizeof(*srh) + sizeof(struct in6_addr))
 		return -EINVAL;
 
-	if (!seg6_validate_srh(srh, len))
+	if (!seg6_validate_srh(srh, len, false))
 		return -EINVAL;
 
 	slwt->srh = kmemdup(srh, len, GFP_KERNEL);
@@ -968,8 +970,9 @@ static int parse_nla_action(struct nlattr **attrs, struct seg6_local_lwt *slwt)
 	return 0;
 }
 
-static int seg6_local_build_state(struct nlattr *nla, unsigned int family,
-				  const void *cfg, struct lwtunnel_state **ts,
+static int seg6_local_build_state(struct net *net, struct nlattr *nla,
+				  unsigned int family, const void *cfg,
+				  struct lwtunnel_state **ts,
 				  struct netlink_ext_ack *extack)
 {
 	struct nlattr *tb[SEG6_LOCAL_MAX + 1];

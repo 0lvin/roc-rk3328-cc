@@ -2,6 +2,8 @@
 How to get printk format specifiers right
 =========================================
 
+.. _printk-specifiers:
+
 :Author: Randy Dunlap <rdunlap@infradead.org>
 :Author: Andrew Murray <amurray@mpc-data.co.uk>
 
@@ -112,6 +114,20 @@ used when printing stack backtraces. The specifier takes into
 consideration the effect of compiler optimisations which may occur
 when tail-calls are used and marked with the noreturn GCC attribute.
 
+Probed Pointers from BPF / tracing
+----------------------------------
+
+::
+
+	%pks	kernel string
+	%pus	user string
+
+The ``k`` and ``u`` specifiers are used for printing prior probed memory from
+either kernel memory (k) or user memory (u). The subsequent ``s`` specifier
+results in printing a string. For direct use in regular vsnprintf() the (k)
+and (u) annotation is ignored, however, when used out of BPF's bpf_trace_printk(),
+for example, it reads the memory it is pointing to without faulting.
+
 Kernel Pointers
 ---------------
 
@@ -136,6 +152,20 @@ kernel memory layout before printing pointers with %px. %px is functionally
 equivalent to %lx (or %lu). %px is preferred because it is more uniquely
 grep'able. If in the future we need to modify the way the kernel handles
 printing pointers we will be better equipped to find the call sites.
+
+Pointer Differences
+-------------------
+
+::
+
+	%td	2560
+	%tx	a00
+
+For printing the pointer differences, use the %t modifier for ptrdiff_t.
+
+Example::
+
+	printk("test: difference between pointers: %td\n", ptr2 - ptr1);
 
 Struct Resources
 ----------------
@@ -454,21 +484,23 @@ Examples (OF)::
 	%pfwf	/ocp@68000000/i2c@48072000/camera@10/port/endpoint - Full name
 	%pfwP	endpoint				- Node name
 
-Time and date (struct rtc_time)
--------------------------------
+Time and date
+-------------
 
 ::
 
-	%ptR		YYYY-mm-ddTHH:MM:SS
-	%ptRd		YYYY-mm-dd
-	%ptRt		HH:MM:SS
-	%ptR[dt][r]
+	%pt[RT]			YYYY-mm-ddTHH:MM:SS
+	%pt[RT]d		YYYY-mm-dd
+	%pt[RT]t		HH:MM:SS
+	%pt[RT][dt][r]
 
-For printing date and time as represented by struct rtc_time structure in
-human readable format.
+For printing date and time as represented by
+	R  struct rtc_time structure
+	T  time64_t type
+in human readable format.
 
-By default year will be incremented by 1900 and month by 1. Use %ptRr (raw)
-to suppress this behaviour.
+By default year will be incremented by 1900 and month by 1.
+Use %pt[RT]r (raw) to suppress this behaviour.
 
 Passed by reference.
 

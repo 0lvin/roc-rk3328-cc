@@ -617,16 +617,15 @@ static struct net_device *inet6_fib_lookup_dev(struct net *net,
 	struct net_device *dev;
 	struct dst_entry *dst;
 	struct flowi6 fl6;
-	int err;
 
 	if (!ipv6_stub)
 		return ERR_PTR(-EAFNOSUPPORT);
 
 	memset(&fl6, 0, sizeof(fl6));
 	memcpy(&fl6.daddr, addr, sizeof(struct in6_addr));
-	err = ipv6_stub->ipv6_dst_lookup(net, NULL, &dst, &fl6);
-	if (err)
-		return ERR_PTR(err);
+	dst = ipv6_stub->ipv6_dst_lookup_flow(net, NULL, &fl6, NULL);
+	if (IS_ERR(dst))
+		return ERR_CAST(dst);
 
 	dev = dst->dev;
 	dev_hold(dev);
@@ -1363,8 +1362,7 @@ done:
 	(&((struct mpls_dev *)0)->field)
 
 static int mpls_conf_proc(struct ctl_table *ctl, int write,
-			  void __user *buffer,
-			  size_t *lenp, loff_t *ppos)
+			  void *buffer, size_t *lenp, loff_t *ppos)
 {
 	int oval = *(int *)ctl->data;
 	int ret = proc_dointvec(ctl, write, buffer, lenp, ppos);
@@ -1595,7 +1593,8 @@ static int mpls_dev_notify(struct notifier_block *this, unsigned long event,
 		    dev->type == ARPHRD_IPGRE ||
 		    dev->type == ARPHRD_IP6GRE ||
 		    dev->type == ARPHRD_SIT ||
-		    dev->type == ARPHRD_TUNNEL) {
+		    dev->type == ARPHRD_TUNNEL ||
+		    dev->type == ARPHRD_TUNNEL6) {
 			mdev = mpls_add_dev(dev);
 			if (IS_ERR(mdev))
 				return notifier_from_errno(PTR_ERR(mdev));
@@ -2595,7 +2594,7 @@ nolabels:
 }
 
 static int mpls_platform_labels(struct ctl_table *table, int write,
-				void __user *buffer, size_t *lenp, loff_t *ppos)
+				void *buffer, size_t *lenp, loff_t *ppos)
 {
 	struct net *net = table->data;
 	int platform_labels = net->mpls.platform_labels;

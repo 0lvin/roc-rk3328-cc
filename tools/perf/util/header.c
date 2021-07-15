@@ -525,7 +525,7 @@ static int write_event_desc(struct feat_fd *ff,
 		/*
 		 * write event string as passed on cmdline
 		 */
-		ret = do_write_string(ff, perf_evsel__name(evsel));
+		ret = do_write_string(ff, evsel__name(evsel));
 		if (ret < 0)
 			return ret;
 		/*
@@ -783,8 +783,7 @@ static int write_group_desc(struct feat_fd *ff,
 		return ret;
 
 	evlist__for_each_entry(evlist, evsel) {
-		if (perf_evsel__is_group_leader(evsel) &&
-		    evsel->core.nr_members > 1) {
+		if (evsel__is_group_leader(evsel) && evsel->core.nr_members > 1) {
 			const char *name = evsel->group_name ?: "{anon_group}";
 			u32 leader_idx = evsel->idx;
 			u32 nr_members = evsel->core.nr_members;
@@ -850,7 +849,7 @@ int __weak strcmp_cpuid_str(const char *mapcpuid, const char *cpuid)
  */
 int __weak get_cpuid(char *buffer __maybe_unused, size_t sz __maybe_unused)
 {
-	return -1;
+	return ENOSYS; /* Not implemented */
 }
 
 static int write_cpuid(struct feat_fd *ff,
@@ -1089,21 +1088,18 @@ static void cpu_cache_level__fprintf(FILE *out, struct cpu_cache_level *c)
 	fprintf(out, "L%d %-15s %8s [%s]\n", c->level, c->type, c->size, c->map);
 }
 
-static int build_caches(struct cpu_cache_level caches[], u32 size, u32 *cntp)
+#define MAX_CACHE_LVL 4
+
+static int build_caches(struct cpu_cache_level caches[], u32 *cntp)
 {
 	u32 i, cnt = 0;
-	long ncpus;
 	u32 nr, cpu;
 	u16 level;
 
-	ncpus = sysconf(_SC_NPROCESSORS_CONF);
-	if (ncpus < 0)
-		return -1;
-
-	nr = (u32)(ncpus & UINT_MAX);
+	nr = cpu__max_cpu();
 
 	for (cpu = 0; cpu < nr; cpu++) {
-		for (level = 0; level < 10; level++) {
+		for (level = 0; level < MAX_CACHE_LVL; level++) {
 			struct cpu_cache_level c;
 			int err;
 
@@ -1123,17 +1119,11 @@ static int build_caches(struct cpu_cache_level caches[], u32 size, u32 *cntp)
 				caches[cnt++] = c;
 			else
 				cpu_cache_level__free(&c);
-
-			if (WARN_ONCE(cnt == size, "way too many cpu caches.."))
-				goto out;
 		}
 	}
- out:
 	*cntp = cnt;
 	return 0;
 }
-
-#define MAX_CACHE_LVL 4
 
 static int write_cache(struct feat_fd *ff,
 		       struct evlist *evlist __maybe_unused)
@@ -1143,7 +1133,7 @@ static int write_cache(struct feat_fd *ff,
 	u32 cnt = 0, i, version = 1;
 	int ret;
 
-	ret = build_caches(caches, max_caches, &cnt);
+	ret = build_caches(caches, &cnt);
 	if (ret)
 		goto out;
 
@@ -1404,6 +1394,38 @@ static int write_compressed(struct feat_fd *ff __maybe_unused,
 	return do_write(ff, &(ff->ph->env.comp_mmap_len), sizeof(ff->ph->env.comp_mmap_len));
 }
 
+static int write_cpu_pmu_caps(struct feat_fd *ff,
+			      struct evlist *evlist __maybe_unused)
+{
+	struct perf_pmu *cpu_pmu = perf_pmu__find("cpu");
+	struct perf_pmu_caps *caps = NULL;
+	int nr_caps;
+	int ret;
+
+	if (!cpu_pmu)
+		return -ENOENT;
+
+	nr_caps = perf_pmu__caps_parse(cpu_pmu);
+	if (nr_caps < 0)
+		return nr_caps;
+
+	ret = do_write(ff, &nr_caps, sizeof(nr_caps));
+	if (ret < 0)
+		return ret;
+
+	list_for_each_entry(caps, &cpu_pmu->caps, list) {
+		ret = do_write_string(ff, caps->name);
+		if (ret < 0)
+			return ret;
+
+		ret = do_write_string(ff, caps->value);
+		if (ret < 0)
+			return ret;
+	}
+
+	return ret;
+}
+
 static void print_hostname(struct feat_fd *ff, FILE *fp)
 {
 	fprintf(fp, "# hostname : %s\n", ff->ph->env.hostname);
@@ -1599,6 +1621,40 @@ static void free_event_desc(struct evsel *events)
 	free(events);
 }
 
+static bool perf_attr_check(struct perf_event_attr *attr)
+{
+	if (attr->__reserved_1 || attr->__reserved_2 || attr->__reserved_3) {
+		pr_warning("Reserved bits are set unexpectedly. "
+			   "Please update perf tool.\n");
+		return false;
+	}
+
+	if (attr->sample_type & ~(PERF_SAMPLE_MAX-1)) {
+		pr_warning("Unknown sample type (0x%llx) is detected. "
+			   "Please update perf tool.\n",
+			   attr->sample_type);
+		return false;
+	}
+
+	if (attr->read_format & ~(PERF_FORMAT_MAX-1)) {
+		pr_warning("Unknown read format (0x%llx) is detected. "
+			   "Please update perf tool.\n",
+			   attr->read_format);
+		return false;
+	}
+
+	if ((attr->sample_type & PERF_SAMPLE_BRANCH_STACK) &&
+	    (attr->branch_sample_type & ~(PERF_SAMPLE_BRANCH_MAX-1))) {
+		pr_warning("Unknown branch sample type (0x%llx) is detected. "
+			   "Please update perf tool.\n",
+			   attr->branch_sample_type);
+
+		return false;
+	}
+
+	return true;
+}
+
 static struct evsel *read_event_desc(struct feat_fd *ff)
 {
 	struct evsel *evsel, *events = NULL;
@@ -1642,6 +1698,9 @@ static struct evsel *read_event_desc(struct feat_fd *ff)
 			perf_event__attr_swap(buf);
 
 		memcpy(&evsel->core.attr, buf, msz);
+
+		if (!perf_attr_check(&evsel->core.attr))
+			goto error;
 
 		if (do_read_u32(ff, &nr))
 			goto error;
@@ -1781,6 +1840,27 @@ static void print_compressed(struct feat_fd *ff, FILE *fp)
 		ff->ph->env.comp_level, ff->ph->env.comp_ratio);
 }
 
+static void print_cpu_pmu_caps(struct feat_fd *ff, FILE *fp)
+{
+	const char *delimiter = "# cpu pmu capabilities: ";
+	u32 nr_caps = ff->ph->env.nr_cpu_pmu_caps;
+	char *str;
+
+	if (!nr_caps) {
+		fprintf(fp, "# cpu pmu capabilities: not available\n");
+		return;
+	}
+
+	str = ff->ph->env.cpu_pmu_caps;
+	while (nr_caps--) {
+		fprintf(fp, "%s%s", delimiter, str);
+		delimiter = ", ";
+		str += strlen(str) + 1;
+	}
+
+	fprintf(fp, "\n");
+}
+
 static void print_pmu_mappings(struct feat_fd *ff, FILE *fp)
 {
 	const char *delimiter = "# pmu mappings: ";
@@ -1826,14 +1906,12 @@ static void print_group_desc(struct feat_fd *ff, FILE *fp)
 	session = container_of(ff->ph, struct perf_session, header);
 
 	evlist__for_each_entry(session->evlist, evsel) {
-		if (perf_evsel__is_group_leader(evsel) &&
-		    evsel->core.nr_members > 1) {
-			fprintf(fp, "# group: %s{%s", evsel->group_name ?: "",
-				perf_evsel__name(evsel));
+		if (evsel__is_group_leader(evsel) && evsel->core.nr_members > 1) {
+			fprintf(fp, "# group: %s{%s", evsel->group_name ?: "", evsel__name(evsel));
 
 			nr = evsel->core.nr_members - 1;
 		} else if (nr) {
-			fprintf(fp, ",%s", perf_evsel__name(evsel));
+			fprintf(fp, ",%s", evsel__name(evsel));
 
 			if (--nr == 0)
 				fprintf(fp, "}\n");
@@ -2818,6 +2896,60 @@ static int process_compressed(struct feat_fd *ff,
 	return 0;
 }
 
+static int process_cpu_pmu_caps(struct feat_fd *ff,
+				void *data __maybe_unused)
+{
+	char *name, *value;
+	struct strbuf sb;
+	u32 nr_caps;
+
+	if (do_read_u32(ff, &nr_caps))
+		return -1;
+
+	if (!nr_caps) {
+		pr_debug("cpu pmu capabilities not available\n");
+		return 0;
+	}
+
+	ff->ph->env.nr_cpu_pmu_caps = nr_caps;
+
+	if (strbuf_init(&sb, 128) < 0)
+		return -1;
+
+	while (nr_caps--) {
+		name = do_read_string(ff);
+		if (!name)
+			goto error;
+
+		value = do_read_string(ff);
+		if (!value)
+			goto free_name;
+
+		if (strbuf_addf(&sb, "%s=%s", name, value) < 0)
+			goto free_value;
+
+		/* include a NULL character at the end */
+		if (strbuf_add(&sb, "", 1) < 0)
+			goto free_value;
+
+		if (!strcmp(name, "branches"))
+			ff->ph->env.max_branches = atoi(value);
+
+		free(value);
+		free(name);
+	}
+	ff->ph->env.cpu_pmu_caps = strbuf_detach(&sb, NULL);
+	return 0;
+
+free_value:
+	free(value);
+free_name:
+	free(name);
+error:
+	strbuf_release(&sb);
+	return -1;
+}
+
 #define FEAT_OPR(n, func, __full_only) \
 	[HEADER_##n] = {					\
 		.name	    = __stringify(n),			\
@@ -2875,6 +3007,7 @@ const struct perf_header_feature_ops feat_ops[HEADER_LAST_FEATURE] = {
 	FEAT_OPR(BPF_PROG_INFO, bpf_prog_info,  false),
 	FEAT_OPR(BPF_BTF,       bpf_btf,        false),
 	FEAT_OPR(COMPRESSED,	compressed,	false),
+	FEAT_OPR(CPU_PMU_CAPS,	cpu_pmu_caps,	false),
 };
 
 struct header_print_data {
@@ -2931,7 +3064,7 @@ int perf_header__fprintf_info(struct perf_session *session, FILE *fp, bool full)
 	if (ret == -1)
 		return -1;
 
-	stctime = st.st_ctime;
+	stctime = st.st_mtime;
 	fprintf(fp, "# captured on    : %s", ctime(&stctime));
 
 	fprintf(fp, "# header version : %u\n", header->version);
@@ -3441,7 +3574,7 @@ static int perf_header__read_pipe(struct perf_session *session)
 		return -EINVAL;
 	}
 
-	return 0;
+	return f_header.size == sizeof(f_header) ? 0 : -1;
 }
 
 static int read_attr(int fd, struct perf_header *ph,
@@ -3543,7 +3676,7 @@ int perf_session__read_header(struct perf_session *session)
 	struct perf_file_header	f_header;
 	struct perf_file_attr	f_attr;
 	u64			f_id;
-	int nr_attrs, nr_ids, i, j;
+	int nr_attrs, nr_ids, i, j, err;
 	int fd = perf_data__fd(data);
 
 	session->evlist = evlist__new();
@@ -3552,8 +3685,16 @@ int perf_session__read_header(struct perf_session *session)
 
 	session->evlist->env = &header->env;
 	session->machines.host.env = &header->env;
-	if (perf_data__is_pipe(data))
-		return perf_header__read_pipe(session);
+
+	/*
+	 * We can read 'pipe' data event from regular file,
+	 * check for the pipe header regardless of source.
+	 */
+	err = perf_header__read_pipe(session);
+	if (!err || (err && perf_data__is_pipe(data))) {
+		data->is_pipe = true;
+		return err;
+	}
 
 	if (perf_file_header__read(&f_header, header, fd) < 0)
 		return -EINVAL;
@@ -3814,12 +3955,22 @@ int perf_event__process_tracing_data(struct perf_session *session,
 {
 	ssize_t size_read, padding, size = event->tracing_data.size;
 	int fd = perf_data__fd(session->data);
-	off_t offset = lseek(fd, 0, SEEK_CUR);
 	char buf[BUFSIZ];
 
-	/* setup for reading amidst mmap */
-	lseek(fd, offset + sizeof(struct perf_record_header_tracing_data),
-	      SEEK_SET);
+	/*
+	 * The pipe fd is already in proper place and in any case
+	 * we can't move it, and we'd screw the case where we read
+	 * 'pipe' data from regular file. The trace_report reads
+	 * data from 'fd' so we need to set it directly behind the
+	 * event, where the tracing data starts.
+	 */
+	if (!perf_data__is_pipe(session->data)) {
+		off_t offset = lseek(fd, 0, SEEK_CUR);
+
+		/* setup for reading amidst mmap */
+		lseek(fd, offset + sizeof(struct perf_record_header_tracing_data),
+		      SEEK_SET);
+	}
 
 	size_read = trace_report(fd, &session->tevent,
 				 session->repipe);

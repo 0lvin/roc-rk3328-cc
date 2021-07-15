@@ -3,9 +3,17 @@
 
 #include <linux/bpf.h>
 #include <stdint.h>
-#include "bpf_helpers.h"
+#include <bpf/bpf_helpers.h>
 
 char _license[] SEC("license") = "GPL";
+
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 4096);
+	__uint(map_flags, BPF_F_MMAPABLE | BPF_F_RDONLY_PROG);
+	__type(key, __u32);
+	__type(value, char);
+} rdonly_map SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
@@ -15,8 +23,8 @@ struct {
 	__type(value, __u64);
 } data_map SEC(".maps");
 
-static volatile __u64 in_val;
-static volatile __u64 out_val;
+__u64 in_val = 0;
+__u64 out_val = 0;
 
 SEC("raw_tracepoint/sys_enter")
 int test_mmap(void *ctx)

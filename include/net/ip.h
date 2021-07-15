@@ -760,4 +760,15 @@ int ip_misc_proc_init(void);
 int rtm_getroute_parse_ip_proto(struct nlattr *attr, u8 *ip_proto, u8 family,
 				struct netlink_ext_ack *extack);
 
+static inline bool inetdev_valid_mtu(unsigned int mtu)
+{
+	return likely(mtu >= IPV4_MIN_MTU);
+}
+
+void ip_sock_set_freebind(struct sock *sk);
+int ip_sock_set_mtu_discover(struct sock *sk, int val);
+void ip_sock_set_pktinfo(struct sock *sk);
+void ip_sock_set_recverr(struct sock *sk);
+void ip_sock_set_tos(struct sock *sk, int val);
+
 #endif	/* _IP_H */

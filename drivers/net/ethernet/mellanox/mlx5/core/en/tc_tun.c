@@ -4,8 +4,11 @@
 #include <net/vxlan.h>
 #include <net/gre.h>
 #include <net/geneve.h>
+#include <net/bareudp.h>
 #include "en/tc_tun.h"
 #include "en_tc.h"
+#include "rep/tc.h"
+#include "rep/neigh.h"
 
 struct mlx5e_tc_tunnel *mlx5e_get_tc_tun(struct net_device *tunnel_dev)
 {
@@ -16,6 +19,8 @@ struct mlx5e_tc_tunnel *mlx5e_get_tc_tun(struct net_device *tunnel_dev)
 	else if (netif_is_gretap(tunnel_dev) ||
 		 netif_is_ip6gretap(tunnel_dev))
 		return &gre_tunnel;
+	else if (netif_is_bareudp(tunnel_dev))
+		return &mplsoudp_tunnel;
 	else
 		return NULL;
 }
@@ -66,6 +71,9 @@ static int get_route_and_out_devs(struct mlx5e_priv *priv,
 	      mlx5e_is_uplink_rep(netdev_priv(*out_dev))))
 		return -EOPNOTSUPP;
 
+	if (mlx5e_eswitch_uplink_rep(priv->netdev) && *out_dev != priv->netdev)
+		return -EOPNOTSUPP;
+
 	return 0;
 }
 
@@ -93,9 +101,8 @@ static int mlx5e_route_lookup_ipv4(struct mlx5e_priv *priv,
 	}
 
 	rt = ip_route_output_key(dev_net(mirred_dev), fl4);
-	ret = PTR_ERR_OR_ZERO(rt);
-	if (ret)
-		return ret;
+	if (IS_ERR(rt))
+		return PTR_ERR(rt);
 
 	if (mlx5_lag_is_multipath(mdev) && rt->rt_gw_family != AF_INET) {
 		ip_rt_put(rt);
@@ -128,42 +135,6 @@ static const char *mlx5e_netdev_kind(struct net_device *dev)
 		return dev->rtnl_link_ops->kind;
 	else
 		return "unknown";
-}
-
-static int mlx5e_route_lookup_ipv6(struct mlx5e_priv *priv,
-				   struct net_device *mirred_dev,
-				   struct net_device **out_dev,
-				   struct net_device **route_dev,
-				   struct flowi6 *fl6,
-				   struct neighbour **out_n,
-				   u8 *out_ttl)
-{
-	struct dst_entry *dst;
-	struct neighbour *n;
-
-	int ret;
-
-	ret = ipv6_stub->ipv6_dst_lookup(dev_net(mirred_dev), NULL, &dst,
-					 fl6);
-	if (ret < 0)
-		return ret;
-
-	if (!(*out_ttl))
-		*out_ttl = ip6_dst_hoplimit(dst);
-
-	ret = get_route_and_out_devs(priv, dst->dev, route_dev, out_dev);
-	if (ret < 0) {
-		dst_release(dst);
-		return ret;
-	}
-
-	n = dst_neigh_lookup(dst, &fl6->daddr);
-	dst_release(dst);
-	if (!n)
-		return -ENOMEM;
-
-	*out_n = n;
-	return 0;
 }
 
 static int mlx5e_gen_ip_tunnel_header(char buf[], __u8 *ip_proto,
@@ -319,6 +290,43 @@ release_neigh:
 	return err;
 }
 
+#if IS_ENABLED(CONFIG_INET) && IS_ENABLED(CONFIG_IPV6)
+static int mlx5e_route_lookup_ipv6(struct mlx5e_priv *priv,
+				   struct net_device *mirred_dev,
+				   struct net_device **out_dev,
+				   struct net_device **route_dev,
+				   struct flowi6 *fl6,
+				   struct neighbour **out_n,
+				   u8 *out_ttl)
+{
+	struct dst_entry *dst;
+	struct neighbour *n;
+
+	int ret;
+
+	dst = ipv6_stub->ipv6_dst_lookup_flow(dev_net(mirred_dev), NULL, fl6,
+					      NULL);
+	if (IS_ERR(dst))
+		return PTR_ERR(dst);
+
+	if (!(*out_ttl))
+		*out_ttl = ip6_dst_hoplimit(dst);
+
+	ret = get_route_and_out_devs(priv, dst->dev, route_dev, out_dev);
+	if (ret < 0) {
+		dst_release(dst);
+		return ret;
+	}
+
+	n = dst_neigh_lookup(dst, &fl6->daddr);
+	dst_release(dst);
+	if (!n)
+		return -ENOMEM;
+
+	*out_n = n;
+	return 0;
+}
+
 int mlx5e_tc_tun_create_header_ipv6(struct mlx5e_priv *priv,
 				    struct net_device *mirred_dev,
 				    struct mlx5e_encap_entry *e)
@@ -328,7 +336,7 @@ int mlx5e_tc_tun_create_header_ipv6(struct mlx5e_priv *priv,
 	struct net_device *out_dev, *route_dev;
 	struct flowi6 fl6 = {};
 	struct ipv6hdr *ip6h;
-	struct neighbour *n;
+	struct neighbour *n = NULL;
 	int ipv6_encap_size;
 	char *encap_header;
 	u8 nud_state, ttl;
@@ -436,6 +444,7 @@ release_neigh:
 	neigh_release(n);
 	return err;
 }
+#endif
 
 bool mlx5e_tc_tun_device_to_offload(struct mlx5e_priv *priv,
 				    struct net_device *netdev)
@@ -467,10 +476,15 @@ int mlx5e_tc_tun_parse(struct net_device *filter_dev,
 		       struct mlx5e_priv *priv,
 		       struct mlx5_flow_spec *spec,
 		       struct flow_cls_offload *f,
-		       void *headers_c,
-		       void *headers_v, u8 *match_level)
+		       u8 *match_level)
 {
 	struct mlx5e_tc_tunnel *tunnel = mlx5e_get_tc_tun(filter_dev);
+	struct flow_rule *rule = flow_cls_offload_flow_rule(f);
+	void *headers_c = MLX5_ADDR_OF(fte_match_param, spec->match_criteria,
+				       outer_headers);
+	void *headers_v = MLX5_ADDR_OF(fte_match_param, spec->match_value,
+				       outer_headers);
+	struct netlink_ext_ack *extack = f->common.extack;
 	int err = 0;
 
 	if (!tunnel) {
@@ -496,6 +510,114 @@ int mlx5e_tc_tun_parse(struct net_device *filter_dev,
 		if (err)
 			goto out;
 	}
+
+	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_ENC_CONTROL)) {
+		struct flow_dissector_key_basic key_basic = {};
+		struct flow_dissector_key_basic mask_basic = {
+			.n_proto = htons(0xFFFF),
+		};
+		struct flow_match_basic match_basic = {
+			.key = &key_basic, .mask = &mask_basic,
+		};
+		struct flow_match_control match;
+		u16 addr_type;
+
+		flow_rule_match_enc_control(rule, &match);
+		addr_type = match.key->addr_type;
+
+		/* For tunnel addr_type used same key id`s as for non-tunnel */
+		if (addr_type == FLOW_DISSECTOR_KEY_IPV4_ADDRS) {
+			struct flow_match_ipv4_addrs match;
+
+			flow_rule_match_enc_ipv4_addrs(rule, &match);
+			MLX5_SET(fte_match_set_lyr_2_4, headers_c,
+				 src_ipv4_src_ipv6.ipv4_layout.ipv4,
+				 ntohl(match.mask->src));
+			MLX5_SET(fte_match_set_lyr_2_4, headers_v,
+				 src_ipv4_src_ipv6.ipv4_layout.ipv4,
+				 ntohl(match.key->src));
+
+			MLX5_SET(fte_match_set_lyr_2_4, headers_c,
+				 dst_ipv4_dst_ipv6.ipv4_layout.ipv4,
+				 ntohl(match.mask->dst));
+			MLX5_SET(fte_match_set_lyr_2_4, headers_v,
+				 dst_ipv4_dst_ipv6.ipv4_layout.ipv4,
+				 ntohl(match.key->dst));
+
+			key_basic.n_proto = htons(ETH_P_IP);
+			mlx5e_tc_set_ethertype(priv->mdev, &match_basic, true,
+					       headers_c, headers_v);
+		} else if (addr_type == FLOW_DISSECTOR_KEY_IPV6_ADDRS) {
+			struct flow_match_ipv6_addrs match;
+
+			flow_rule_match_enc_ipv6_addrs(rule, &match);
+			memcpy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_c,
+					    src_ipv4_src_ipv6.ipv6_layout.ipv6),
+			       &match.mask->src, MLX5_FLD_SZ_BYTES(ipv6_layout,
+								   ipv6));
+			memcpy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_v,
+					    src_ipv4_src_ipv6.ipv6_layout.ipv6),
+			       &match.key->src, MLX5_FLD_SZ_BYTES(ipv6_layout,
+								  ipv6));
+
+			memcpy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_c,
+					    dst_ipv4_dst_ipv6.ipv6_layout.ipv6),
+			       &match.mask->dst, MLX5_FLD_SZ_BYTES(ipv6_layout,
+								   ipv6));
+			memcpy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_v,
+					    dst_ipv4_dst_ipv6.ipv6_layout.ipv6),
+			       &match.key->dst, MLX5_FLD_SZ_BYTES(ipv6_layout,
+								  ipv6));
+
+			key_basic.n_proto = htons(ETH_P_IPV6);
+			mlx5e_tc_set_ethertype(priv->mdev, &match_basic, true,
+					       headers_c, headers_v);
+		}
+	}
+
+	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_ENC_IP)) {
+		struct flow_match_ip match;
+
+		flow_rule_match_enc_ip(rule, &match);
+		MLX5_SET(fte_match_set_lyr_2_4, headers_c, ip_ecn,
+			 match.mask->tos & 0x3);
+		MLX5_SET(fte_match_set_lyr_2_4, headers_v, ip_ecn,
+			 match.key->tos & 0x3);
+
+		MLX5_SET(fte_match_set_lyr_2_4, headers_c, ip_dscp,
+			 match.mask->tos >> 2);
+		MLX5_SET(fte_match_set_lyr_2_4, headers_v, ip_dscp,
+			 match.key->tos  >> 2);
+
+		MLX5_SET(fte_match_set_lyr_2_4, headers_c, ttl_hoplimit,
+			 match.mask->ttl);
+		MLX5_SET(fte_match_set_lyr_2_4, headers_v, ttl_hoplimit,
+			 match.key->ttl);
+
+		if (match.mask->ttl &&
+		    !MLX5_CAP_ESW_FLOWTABLE_FDB
+			(priv->mdev,
+			 ft_field_support.outer_ipv4_ttl)) {
+			NL_SET_ERR_MSG_MOD(extack,
+					   "Matching on TTL is not supported");
+			err = -EOPNOTSUPP;
+			goto out;
+		}
+	}
+
+	/* Enforce DMAC when offloading incoming tunneled flows.
+	 * Flow counters require a match on the DMAC.
+	 */
+	MLX5_SET_TO_ONES(fte_match_set_lyr_2_4, headers_c, dmac_47_16);
+	MLX5_SET_TO_ONES(fte_match_set_lyr_2_4, headers_c, dmac_15_0);
+	ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, headers_v,
+				     dmac_47_16), priv->netdev->dev_addr);
+
+	/* let software handle IP fragments */
+	MLX5_SET(fte_match_set_lyr_2_4, headers_c, frag, 1);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_v, frag, 0);
+
+	return 0;
 
 out:
 	return err;

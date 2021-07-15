@@ -37,7 +37,6 @@
 #include <asm/idmap.h>
 #include <asm/topology.h>
 #include <asm/mmu_context.h>
-#include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/procinfo.h>
 #include <asm/processor.h>
@@ -239,6 +238,10 @@ int __cpu_disable(void)
 	ret = platform_cpu_disable(cpu);
 	if (ret)
 		return ret;
+
+#ifdef CONFIG_GENERIC_ARCH_TOPOLOGY
+	remove_cpu_topology(cpu);
+#endif
 
 	/*
 	 * Take this CPU offline.  Once we clear this, we can't return,

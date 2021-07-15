@@ -65,7 +65,7 @@ struct bios_args {
 	u32 command;
 	u32 commandtype;
 	u32 datasize;
-	u32 data;
+	u8 data[128];
 };
 
 enum hp_wmi_commandtype {
@@ -111,10 +111,10 @@ enum hp_wireless2_bits {
 	HPWMI_POWER_SOFT	= 0x02,
 	HPWMI_POWER_BIOS	= 0x04,
 	HPWMI_POWER_HARD	= 0x08,
+	HPWMI_POWER_FW_OR_HW	= HPWMI_POWER_BIOS | HPWMI_POWER_HARD,
 };
 
-#define IS_HWBLOCKED(x) ((x & (HPWMI_POWER_BIOS | HPWMI_POWER_HARD)) \
-			 != (HPWMI_POWER_BIOS | HPWMI_POWER_HARD))
+#define IS_HWBLOCKED(x) ((x & HPWMI_POWER_FW_OR_HW) != HPWMI_POWER_FW_OR_HW)
 #define IS_SWBLOCKED(x) !(x & HPWMI_POWER_SOFT)
 
 struct bios_rfkill2_device_state {
@@ -216,7 +216,7 @@ static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
 		.command = command,
 		.commandtype = query,
 		.datasize = insize,
-		.data = 0,
+		.data = { 0 },
 	};
 	struct acpi_buffer input = { sizeof(struct bios_args), &args };
 	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
@@ -228,7 +228,7 @@ static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
 
 	if (WARN_ON(insize > sizeof(args.data)))
 		return -EINVAL;
-	memcpy(&args.data, buffer, insize);
+	memcpy(&args.data[0], buffer, insize);
 
 	wmi_evaluate_method(HPWMI_BIOS_GUID, 0, mid, &input, &output);
 
@@ -300,7 +300,7 @@ static int __init hp_wmi_bios_2008_later(void)
 
 static int __init hp_wmi_bios_2009_later(void)
 {
-	int state = 0;
+	u8 state[128];
 	int ret = hp_wmi_perform_query(HPWMI_FEATURE2_QUERY, HPWMI_READ, &state,
 				       sizeof(state), sizeof(state));
 	if (!ret)
@@ -380,7 +380,7 @@ static int hp_wmi_rfkill2_refresh(void)
 	int err, i;
 
 	err = hp_wmi_perform_query(HPWMI_WIRELESS2_QUERY, HPWMI_READ, &state,
-				   0, sizeof(state));
+				   sizeof(state), sizeof(state));
 	if (err)
 		return err;
 
@@ -461,8 +461,14 @@ static ssize_t postcode_show(struct device *dev, struct device_attribute *attr,
 static ssize_t als_store(struct device *dev, struct device_attribute *attr,
 			 const char *buf, size_t count)
 {
-	u32 tmp = simple_strtoul(buf, NULL, 10);
-	int ret = hp_wmi_perform_query(HPWMI_ALS_QUERY, HPWMI_WRITE, &tmp,
+	u32 tmp;
+	int ret;
+
+	ret = kstrtou32(buf, 10, &tmp);
+	if (ret)
+		return ret;
+
+	ret = hp_wmi_perform_query(HPWMI_ALS_QUERY, HPWMI_WRITE, &tmp,
 				       sizeof(tmp), sizeof(tmp));
 	if (ret)
 		return ret < 0 ? ret : -EINVAL;
@@ -473,22 +479,20 @@ static ssize_t als_store(struct device *dev, struct device_attribute *attr,
 static ssize_t postcode_store(struct device *dev, struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
-	long unsigned int tmp2;
+	u32 tmp = 1;
+	bool clear;
 	int ret;
-	u32 tmp;
 
-	ret = kstrtoul(buf, 10, &tmp2);
-	if (!ret && tmp2 != 1)
-		ret = -EINVAL;
+	ret = kstrtobool(buf, &clear);
 	if (ret)
-		goto out;
+		return ret;
+
+	if (clear == false)
+		return -EINVAL;
 
 	/* Clear the POST error code. It is kept until until cleared. */
-	tmp = (u32) tmp2;
 	ret = hp_wmi_perform_query(HPWMI_POSTCODEERROR_QUERY, HPWMI_WRITE, &tmp,
 				       sizeof(tmp), sizeof(tmp));
-
-out:
 	if (ret)
 		return ret < 0 ? ret : -EINVAL;
 
@@ -778,7 +782,7 @@ static int __init hp_wmi_rfkill2_setup(struct platform_device *device)
 	int err, i;
 
 	err = hp_wmi_perform_query(HPWMI_WIRELESS2_QUERY, HPWMI_READ, &state,
-				   0, sizeof(state));
+				   sizeof(state), sizeof(state));
 	if (err)
 		return err < 0 ? err : -EINVAL;
 

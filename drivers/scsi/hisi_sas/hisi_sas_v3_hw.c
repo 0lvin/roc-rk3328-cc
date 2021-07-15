@@ -495,6 +495,13 @@ struct hisi_sas_err_record_v3 {
 #define BASE_VECTORS_V3_HW  16
 #define MIN_AFFINE_VECTORS_V3_HW  (BASE_VECTORS_V3_HW + 1)
 
+#define CHNL_INT_STS_MSK	0xeeeeeeee
+#define CHNL_INT_STS_PHY_MSK	0xe
+#define CHNL_INT_STS_INT0_MSK BIT(1)
+#define CHNL_INT_STS_INT1_MSK BIT(2)
+#define CHNL_INT_STS_INT2_MSK BIT(3)
+#define CHNL_WIDTH 4
+
 enum {
 	DSM_FUNC_ERR_HANDLE_MSI = 0,
 };
@@ -795,13 +802,14 @@ static void setup_itct_v3_hw(struct hisi_hba *hisi_hba,
 					(0x1ULL << ITCT_HDR_RTOLT_OFF));
 }
 
-static void clear_itct_v3_hw(struct hisi_hba *hisi_hba,
-			      struct hisi_sas_device *sas_dev)
+static int clear_itct_v3_hw(struct hisi_hba *hisi_hba,
+			    struct hisi_sas_device *sas_dev)
 {
 	DECLARE_COMPLETION_ONSTACK(completion);
 	u64 dev_id = sas_dev->device_id;
 	struct hisi_sas_itct *itct = &hisi_hba->itct[dev_id];
 	u32 reg_val = hisi_sas_read32(hisi_hba, ENT_INT_SRC3);
+	struct device *dev = hisi_hba->dev;
 
 	sas_dev->completion = &completion;
 
@@ -814,8 +822,14 @@ static void clear_itct_v3_hw(struct hisi_hba *hisi_hba,
 	reg_val = ITCT_CLR_EN_MSK | (dev_id & ITCT_DEV_MSK);
 	hisi_sas_write32(hisi_hba, ITCT_CLR, reg_val);
 
-	wait_for_completion(sas_dev->completion);
+	if (!wait_for_completion_timeout(sas_dev->completion,
+					 CLEAR_ITCT_TIMEOUT * HZ)) {
+		dev_warn(dev, "failed to clear ITCT\n");
+		return -ETIMEDOUT;
+	}
+
 	memset(itct, 0, sizeof(struct hisi_sas_itct));
+	return 0;
 }
 
 static void dereg_device_v3_hw(struct hisi_hba *hisi_hba,
@@ -898,11 +912,15 @@ static int hw_init_v3_hw(struct hisi_hba *hisi_hba)
 		return -EINVAL;
 	}
 
-	/* Switch over to MSI handling , from PCI AER default */
+	/*
+	 * This DSM handles some hardware-related configurations:
+	 * 1. Switch over to MSI error handling in kernel
+	 * 2. BIOS *may* reset some register values through this method
+	 */
 	obj = acpi_evaluate_dsm(ACPI_HANDLE(dev), &guid, 0,
 				DSM_FUNC_ERR_HANDLE_MSI, NULL);
 	if (!obj)
-		dev_warn(dev, "Switch over to MSI handling failed\n");
+		dev_warn(dev, "can not find DSM method, ignore\n");
 	else
 		ACPI_FREE(obj);
 
@@ -1542,6 +1560,8 @@ static irqreturn_t phy_down_v3_hw(int phy_no, struct hisi_hba *hisi_hba)
 	u32 phy_state, sl_ctrl, txid_auto;
 	struct device *dev = hisi_hba->dev;
 
+	atomic_inc(&phy->down_cnt);
+
 	del_timer(&phy->timer);
 	hisi_sas_phy_write32(hisi_hba, phy_no, PHYCTRL_NOT_RDY_MSK, 1);
 
@@ -1810,19 +1830,19 @@ static irqreturn_t int_chnl_int_v3_hw(int irq_no, void *p)
 	int phy_no = 0;
 
 	irq_msk = hisi_sas_read32(hisi_hba, CHNL_INT_STATUS)
-				& 0xeeeeeeee;
+		  & CHNL_INT_STS_MSK;
 
 	while (irq_msk) {
-		if (irq_msk & (2 << (phy_no * 4)))
+		if (irq_msk & (CHNL_INT_STS_INT0_MSK << (phy_no * CHNL_WIDTH)))
 			handle_chl_int0_v3_hw(hisi_hba, phy_no);
 
-		if (irq_msk & (4 << (phy_no * 4)))
+		if (irq_msk & (CHNL_INT_STS_INT1_MSK << (phy_no * CHNL_WIDTH)))
 			handle_chl_int1_v3_hw(hisi_hba, phy_no);
 
-		if (irq_msk & (8 << (phy_no * 4)))
+		if (irq_msk & (CHNL_INT_STS_INT2_MSK << (phy_no * CHNL_WIDTH)))
 			handle_chl_int2_v3_hw(hisi_hba, phy_no);
 
-		irq_msk &= ~(0xe << (phy_no * 4));
+		irq_msk &= ~(CHNL_INT_STS_PHY_MSK << (phy_no * CHNL_WIDTH));
 		phy_no++;
 	}
 
@@ -2136,8 +2156,8 @@ slot_err_v3_hw(struct hisi_hba *hisi_hba, struct sas_task *task,
 	}
 }
 
-static int
-slot_complete_v3_hw(struct hisi_hba *hisi_hba, struct hisi_sas_slot *slot)
+static void slot_complete_v3_hw(struct hisi_hba *hisi_hba,
+				struct hisi_sas_slot *slot)
 {
 	struct sas_task *task = slot->task;
 	struct hisi_sas_device *sas_dev;
@@ -2145,7 +2165,6 @@ slot_complete_v3_hw(struct hisi_hba *hisi_hba, struct hisi_sas_slot *slot)
 	struct task_status_struct *ts;
 	struct domain_device *device;
 	struct sas_ha_struct *ha;
-	enum exec_status sts;
 	struct hisi_sas_complete_v3_hdr *complete_queue =
 			hisi_hba->complete_hdr[slot->cmplt_queue];
 	struct hisi_sas_complete_v3_hdr *complete_hdr =
@@ -2155,7 +2174,7 @@ slot_complete_v3_hw(struct hisi_hba *hisi_hba, struct hisi_sas_slot *slot)
 	u32 dw0, dw1, dw3;
 
 	if (unlikely(!task || !task->lldd_task || !task->dev))
-		return -EINVAL;
+		return;
 
 	ts = &task->task_status;
 	device = task->dev;
@@ -2217,7 +2236,7 @@ slot_complete_v3_hw(struct hisi_hba *hisi_hba, struct hisi_sas_slot *slot)
 				 error_info[0], error_info[1],
 				 error_info[2], error_info[3]);
 		if (unlikely(slot->abort))
-			return ts->stat;
+			return;
 		goto out;
 	}
 
@@ -2262,12 +2281,11 @@ slot_complete_v3_hw(struct hisi_hba *hisi_hba, struct hisi_sas_slot *slot)
 	}
 
 out:
-	sts = ts->stat;
 	spin_lock_irqsave(&task->task_state_lock, flags);
 	if (task->task_state_flags & SAS_TASK_STATE_ABORTED) {
 		spin_unlock_irqrestore(&task->task_state_lock, flags);
 		dev_info(dev, "slot complete: task(%pK) aborted\n", task);
-		return SAS_ABORTED_TASK;
+		return;
 	}
 	task->task_state_flags |= SAS_TASK_STATE_DONE;
 	spin_unlock_irqrestore(&task->task_state_lock, flags);
@@ -2279,20 +2297,18 @@ out:
 			spin_unlock_irqrestore(&device->done_lock, flags);
 			dev_info(dev, "slot complete: task(%pK) ignored\n ",
 				 task);
-			return sts;
+			return;
 		}
 		spin_unlock_irqrestore(&device->done_lock, flags);
 	}
 
 	if (task->task_done)
 		task->task_done(task);
-
-	return sts;
 }
 
-static void cq_tasklet_v3_hw(unsigned long val)
+static irqreturn_t  cq_thread_v3_hw(int irq_no, void *p)
 {
-	struct hisi_sas_cq *cq = (struct hisi_sas_cq *)val;
+	struct hisi_sas_cq *cq = p;
 	struct hisi_hba *hisi_hba = cq->hisi_hba;
 	struct hisi_sas_slot *slot;
 	struct hisi_sas_complete_v3_hdr *complete_queue;
@@ -2329,6 +2345,8 @@ static void cq_tasklet_v3_hw(unsigned long val)
 	/* update rd_point */
 	cq->rd_point = rd_point;
 	hisi_sas_write32(hisi_hba, COMPL_Q_0_RD_PTR + (0x14 * queue), rd_point);
+
+	return IRQ_HANDLED;
 }
 
 static irqreturn_t cq_interrupt_v3_hw(int irq_no, void *p)
@@ -2339,9 +2357,7 @@ static irqreturn_t cq_interrupt_v3_hw(int irq_no, void *p)
 
 	hisi_sas_write32(hisi_hba, OQ_INT_SRC, 1 << queue);
 
-	tasklet_schedule(&cq->tasklet);
-
-	return IRQ_HANDLED;
+	return IRQ_WAKE_THREAD;
 }
 
 static void setup_reply_map_v3_hw(struct hisi_hba *hisi_hba, int nvecs)
@@ -2356,7 +2372,7 @@ static void setup_reply_map_v3_hw(struct hisi_hba *hisi_hba, int nvecs)
 					    BASE_VECTORS_V3_HW);
 		if (!mask)
 			goto fallback;
-		cq->pci_irq_mask = mask;
+		cq->irq_mask = mask;
 		for_each_cpu(cpu, mask)
 			hisi_hba->reply_map[cpu] = queue;
 	}
@@ -2379,6 +2395,8 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 		struct irq_affinity desc = {
 			.pre_vectors = BASE_VECTORS_V3_HW,
 		};
+
+		dev_info(dev, "Enable MSI auto-affinity\n");
 
 		min_msi = MIN_AFFINE_VECTORS_V3_HW;
 
@@ -2432,15 +2450,20 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 		goto free_irq_vectors;
 	}
 
-	/* Init tasklets for cq only */
+	if (hisi_sas_intr_conv)
+		dev_info(dev, "Enable interrupt converge\n");
+
 	for (i = 0; i < hisi_hba->cq_nvecs; i++) {
 		struct hisi_sas_cq *cq = &hisi_hba->cq[i];
-		struct tasklet_struct *t = &cq->tasklet;
 		int nr = hisi_sas_intr_conv ? 16 : 16 + i;
-		unsigned long irqflags = hisi_sas_intr_conv ? IRQF_SHARED : 0;
+		unsigned long irqflags = hisi_sas_intr_conv ? IRQF_SHARED :
+							      IRQF_ONESHOT;
 
-		rc = devm_request_irq(dev, pci_irq_vector(pdev, nr),
-				      cq_interrupt_v3_hw, irqflags,
+		cq->irq_no = pci_irq_vector(pdev, nr);
+		rc = devm_request_threaded_irq(dev, cq->irq_no,
+				      cq_interrupt_v3_hw,
+				      cq_thread_v3_hw,
+				      irqflags,
 				      DRV_NAME " cq", cq);
 		if (rc) {
 			dev_err(dev, "could not request cq%d interrupt, rc=%d\n",
@@ -2448,8 +2471,6 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 			rc = -ENOENT;
 			goto free_irq_vectors;
 		}
-
-		tasklet_init(t, cq_tasklet_v3_hw, (unsigned long)cq);
 	}
 
 	return 0;
@@ -2525,7 +2546,6 @@ static int disable_host_v3_hw(struct hisi_hba *hisi_hba)
 
 	interrupt_disable_v3_hw(hisi_hba);
 	hisi_sas_write32(hisi_hba, DLVRY_QUEUE_ENABLE, 0x0);
-	hisi_sas_kill_tasklets(hisi_hba);
 
 	hisi_sas_stop_phys(hisi_hba);
 
@@ -2877,6 +2897,7 @@ static const struct hisi_sas_debugfs_reg debugfs_axi_reg = {
 };
 
 static const struct hisi_sas_debugfs_reg_lu debugfs_ras_reg_lu[] = {
+	HISI_SAS_DEBUGFS_REG(SAS_RAS_INTR0),
 	HISI_SAS_DEBUGFS_REG(SAS_RAS_INTR1),
 	HISI_SAS_DEBUGFS_REG(SAS_RAS_INTR0_MASK),
 	HISI_SAS_DEBUGFS_REG(SAS_RAS_INTR1_MASK),
@@ -2901,7 +2922,7 @@ static void debugfs_snapshot_prepare_v3_hw(struct hisi_hba *hisi_hba)
 
 	wait_cmds_complete_timeout_v3_hw(hisi_hba, 100, 5000);
 
-	hisi_sas_kill_tasklets(hisi_hba);
+	hisi_sas_sync_irqs(hisi_hba);
 }
 
 static void debugfs_snapshot_restore_v3_hw(struct hisi_hba *hisi_hba)
@@ -2918,6 +2939,7 @@ static void read_iost_itct_cache_v3_hw(struct hisi_hba *hisi_hba,
 {
 	u32 cache_dw_size = HISI_SAS_IOST_ITCT_CACHE_DW_SZ *
 			    HISI_SAS_IOST_ITCT_CACHE_NUM;
+	struct device *dev = hisi_hba->dev;
 	u32 *buf = cache;
 	u32 i, val;
 
@@ -2930,7 +2952,7 @@ static void read_iost_itct_cache_v3_hw(struct hisi_hba *hisi_hba,
 	}
 
 	if (val != 0xffffffff) {
-		pr_err("Issue occur when reading IOST/ITCT cache!\n");
+		dev_err(dev, "Issue occurred in reading IOST/ITCT cache!\n");
 		return;
 	}
 
@@ -3022,11 +3044,6 @@ static int debugfs_set_bist_v3_hw(struct hisi_hba *hisi_hba, bool enable)
 		hisi_sas_phy_write32(hisi_hba, phy_id,
 				     SAS_PHY_BIST_CTRL, reg_val);
 
-		mdelay(100);
-		reg_val |= (CFG_RX_BIST_EN_MSK | CFG_TX_BIST_EN_MSK);
-		hisi_sas_phy_write32(hisi_hba, phy_id,
-				     SAS_PHY_BIST_CTRL, reg_val);
-
 		/* set the bist init value */
 		hisi_sas_phy_write32(hisi_hba, phy_id,
 				     SAS_PHY_BIST_CODE,
@@ -3034,6 +3051,11 @@ static int debugfs_set_bist_v3_hw(struct hisi_hba *hisi_hba, bool enable)
 		hisi_sas_phy_write32(hisi_hba, phy_id,
 				     SAS_PHY_BIST_CODE1,
 				     SAS_PHY_BIST_CODE1_INIT);
+
+		mdelay(100);
+		reg_val |= (CFG_RX_BIST_EN_MSK | CFG_TX_BIST_EN_MSK);
+		hisi_sas_phy_write32(hisi_hba, phy_id,
+				     SAS_PHY_BIST_CTRL, reg_val);
 
 		/* clear error bit */
 		mdelay(100);
@@ -3050,8 +3072,10 @@ static int debugfs_set_bist_v3_hw(struct hisi_hba *hisi_hba, bool enable)
 
 static struct scsi_host_template sht_v3_hw = {
 	.name			= DRV_NAME,
+	.proc_name		= DRV_NAME,
 	.module			= THIS_MODULE,
 	.queuecommand		= sas_queuecommand,
+	.dma_need_drain		= ata_scsi_dma_need_drain,
 	.target_alloc		= sas_target_alloc,
 	.slave_configure	= hisi_sas_slave_configure,
 	.scan_finished		= hisi_sas_scan_finished,
@@ -3066,6 +3090,9 @@ static struct scsi_host_template sht_v3_hw = {
 	.eh_target_reset_handler = sas_eh_target_reset_handler,
 	.target_destroy		= sas_target_destroy,
 	.ioctl			= sas_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl		= sas_ioctl,
+#endif
 	.shost_attrs		= host_attrs_v3_hw,
 	.tag_alloc_policy	= BLK_TAG_ALLOC_RR,
 	.host_reset             = hisi_sas_host_reset,
@@ -3259,6 +3286,7 @@ hisi_sas_v3_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 err_out_register_ha:
 	scsi_remove_host(shost);
 err_out_ha:
+	hisi_sas_debugfs_exit(hisi_hba);
 	scsi_host_put(shost);
 err_out_regions:
 	pci_release_regions(pdev);
@@ -3292,8 +3320,6 @@ static void hisi_sas_v3_remove(struct pci_dev *pdev)
 	struct hisi_hba *hisi_hba = sha->lldd_ha;
 	struct Scsi_Host *shost = sha->core.shost;
 
-	hisi_sas_debugfs_exit(hisi_hba);
-
 	if (timer_pending(&hisi_hba->timer))
 		del_timer(&hisi_hba->timer);
 
@@ -3301,10 +3327,10 @@ static void hisi_sas_v3_remove(struct pci_dev *pdev)
 	sas_remove_host(sha->core.shost);
 
 	hisi_sas_v3_destroy_irqs(pdev, hisi_hba);
-	hisi_sas_kill_tasklets(hisi_hba);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	hisi_sas_free(hisi_hba);
+	hisi_sas_debugfs_exit(hisi_hba);
 	scsi_host_put(shost);
 }
 
@@ -3422,6 +3448,7 @@ static int hisi_sas_v3_resume(struct pci_dev *pdev)
 	if (rc) {
 		scsi_remove_host(shost);
 		pci_disable_device(pdev);
+		return rc;
 	}
 	hisi_hba->hw->phys_init(hisi_hba);
 	sas_resume_ha(sha);

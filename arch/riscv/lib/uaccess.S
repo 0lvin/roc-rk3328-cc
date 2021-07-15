@@ -1,15 +1,14 @@
 #include <linux/linkage.h>
+#include <asm-generic/export.h>
 #include <asm/asm.h>
 #include <asm/csr.h>
 
-	.altmacro
 	.macro fixup op reg addr lbl
-	LOCAL _epc
-_epc:
+100:
 	\op \reg, \addr
 	.section __ex_table,"a"
 	.balign RISCV_SZPTR
-	RISCV_PTR _epc, \lbl
+	RISCV_PTR 100b, \lbl
 	.previous
 	.endm
 
@@ -66,6 +65,8 @@ ENTRY(__asm_copy_from_user)
 	j 3b
 ENDPROC(__asm_copy_to_user)
 ENDPROC(__asm_copy_from_user)
+EXPORT_SYMBOL(__asm_copy_to_user)
+EXPORT_SYMBOL(__asm_copy_from_user)
 
 
 ENTRY(__clear_user)
@@ -108,6 +109,7 @@ ENTRY(__clear_user)
 	bltu a0, a3, 5b
 	j 3b
 ENDPROC(__clear_user)
+EXPORT_SYMBOL(__clear_user)
 
 	.section .fixup,"ax"
 	.balign 4

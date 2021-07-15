@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 %YAML 1.2
 ---
 $id: http://devicetree.org/schemas/net/ti,cpsw-switch.yaml#
@@ -23,19 +23,25 @@ properties:
     oneOf:
       - const: ti,cpsw-switch
       - items:
-         - const: ti,am335x-cpsw-switch
-         - const: ti,cpsw-switch
+          - const: ti,am335x-cpsw-switch
+          - const: ti,cpsw-switch
       - items:
-        - const: ti,am4372-cpsw-switch
-        - const: ti,cpsw-switch
+          - const: ti,am4372-cpsw-switch
+          - const: ti,cpsw-switch
       - items:
-        - const: ti,dra7-cpsw-switch
-        - const: ti,cpsw-switch
+          - const: ti,dra7-cpsw-switch
+          - const: ti,cpsw-switch
 
   reg:
     maxItems: 1
     description:
        The physical base address and size of full the CPSW module IO range
+
+  '#address-cells':
+    const: 1
+
+  '#size-cells':
+    const: 1
 
   ranges: true
 
@@ -44,7 +50,6 @@ properties:
     description: CPSW functional clock
 
   clock-names:
-    maxItems: 1
     items:
       - const: fck
 
@@ -70,7 +75,6 @@ properties:
       Phandle to the system control device node which provides access to
       efuse IO range with MAC addresses
 
-
   ethernet-ports:
     type: object
     properties:
@@ -82,8 +86,6 @@ properties:
     patternProperties:
       "^port@[0-9]+$":
           type: object
-          minItems: 1
-          maxItems: 2
           description: CPSW external ports
 
           allOf:
@@ -91,23 +93,19 @@ properties:
 
           properties:
             reg:
-              maxItems: 1
-              enum: [1, 2]
+              items:
+                - enum: [1, 2]
               description: CPSW port number
 
             phys:
-              $ref: /schemas/types.yaml#definitions/phandle-array
               maxItems: 1
               description:  phandle on phy-gmii-sel PHY
 
             label:
-              $ref: /schemas/types.yaml#/definitions/string-array
-              maxItems: 1
               description: label associated with this port
 
             ti,dual-emac-pvid:
               $ref: /schemas/types.yaml#/definitions/uint32
-              maxItems: 1
               minimum: 1
               maximum: 1024
               description:
@@ -117,13 +115,6 @@ properties:
           required:
             - reg
             - phys
-
-  mdio:
-    type: object
-    allOf:
-      - $ref: "ti,davinci-mdio.yaml#"
-    description:
-      CPSW MDIO bus.
 
   cpts:
     type: object
@@ -136,7 +127,6 @@ properties:
         description: CPTS reference clock
 
       clock-names:
-        maxItems: 1
         items:
           - const: cpts
 
@@ -156,6 +146,14 @@ properties:
       - clocks
       - clock-names
 
+patternProperties:
+  "^mdio@":
+    type: object
+    description:
+      CPSW MDIO bus.
+    $ref: "ti,davinci-mdio.yaml#"
+
+
 required:
   - compatible
   - reg
@@ -166,6 +164,8 @@ required:
   - interrupt-names
   - '#address-cells'
   - '#size-cells'
+
+additionalProperties: false
 
 examples:
   - |
@@ -182,7 +182,6 @@ examples:
         #address-cells = <1>;
         #size-cells = <1>;
         syscon = <&scm_conf>;
-        inctrl-names = "default", "sleep";
 
         interrupts = <GIC_SPI 334 IRQ_TYPE_LEVEL_HIGH>,
                      <GIC_SPI 335 IRQ_TYPE_LEVEL_HIGH>,
@@ -201,7 +200,7 @@ examples:
                         phys = <&phy_gmii_sel 1>;
                         phy-handle = <&ethphy0_sw>;
                         phy-mode = "rgmii";
-                        ti,dual_emac_pvid = <1>;
+                        ti,dual-emac-pvid = <1>;
                 };
 
                 cpsw_port2: port@2 {
@@ -211,7 +210,7 @@ examples:
                         phys = <&phy_gmii_sel 2>;
                         phy-handle = <&ethphy1_sw>;
                         phy-mode = "rgmii";
-                        ti,dual_emac_pvid = <2>;
+                        ti,dual-emac-pvid = <2>;
                 };
         };
 

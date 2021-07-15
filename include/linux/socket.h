@@ -50,7 +50,17 @@ struct msghdr {
 	void		*msg_name;	/* ptr to socket address structure */
 	int		msg_namelen;	/* size of socket address structure */
 	struct iov_iter	msg_iter;	/* data */
-	void		*msg_control;	/* ancillary data */
+
+	/*
+	 * Ancillary data. msg_control_user is the user buffer used for the
+	 * recv* side when msg_control_is_user is set, msg_control is the kernel
+	 * buffer used for all other cases.
+	 */
+	union {
+		void		*msg_control;
+		void __user	*msg_control_user;
+	};
+	bool		msg_control_is_user : 1;
 	__kernel_size_t	msg_controllen;	/* ancillary data buffer length */
 	unsigned int	msg_flags;	/* flags on received message */
 	struct kiocb	*msg_iocb;	/* ptr to iocb for async requests */
@@ -94,7 +104,10 @@ struct cmsghdr {
 
 #define CMSG_ALIGN(len) ( ((len)+sizeof(long)-1) & ~(sizeof(long)-1) )
 
-#define CMSG_DATA(cmsg)	((void *)((char *)(cmsg) + sizeof(struct cmsghdr)))
+#define CMSG_DATA(cmsg) \
+	((void *)(cmsg) + sizeof(struct cmsghdr))
+#define CMSG_USER_DATA(cmsg) \
+	((void __user *)(cmsg) + sizeof(struct cmsghdr))
 #define CMSG_SPACE(len) (sizeof(struct cmsghdr) + CMSG_ALIGN(len))
 #define CMSG_LEN(len) (sizeof(struct cmsghdr) + (len))
 
@@ -378,12 +391,23 @@ extern int __sys_recvmmsg(int fd, struct mmsghdr __user *mmsg,
 extern int __sys_sendmmsg(int fd, struct mmsghdr __user *mmsg,
 			  unsigned int vlen, unsigned int flags,
 			  bool forbid_cmsg_compat);
-extern long __sys_sendmsg_sock(struct socket *sock,
-			       struct user_msghdr __user *msg,
+extern long __sys_sendmsg_sock(struct socket *sock, struct msghdr *msg,
 			       unsigned int flags);
-extern long __sys_recvmsg_sock(struct socket *sock,
-			       struct user_msghdr __user *msg,
+extern long __sys_recvmsg_sock(struct socket *sock, struct msghdr *msg,
+			       struct user_msghdr __user *umsg,
+			       struct sockaddr __user *uaddr,
 			       unsigned int flags);
+extern int sendmsg_copy_msghdr(struct msghdr *msg,
+			       struct user_msghdr __user *umsg, unsigned flags,
+			       struct iovec **iov);
+extern int recvmsg_copy_msghdr(struct msghdr *msg,
+			       struct user_msghdr __user *umsg, unsigned flags,
+			       struct sockaddr __user **uaddr,
+			       struct iovec **iov);
+extern int __copy_msghdr_from_user(struct msghdr *kmsg,
+				   struct user_msghdr __user *umsg,
+				   struct sockaddr __user **save_addr,
+				   struct iovec __user **uiov, size_t *nsegs);
 
 /* helpers which do the actual work for syscalls */
 extern int __sys_recvfrom(int fd, void __user *ubuf, size_t size,
@@ -394,11 +418,14 @@ extern int __sys_sendto(int fd, void __user *buff, size_t len,
 			int addr_len);
 extern int __sys_accept4_file(struct file *file, unsigned file_flags,
 			struct sockaddr __user *upeer_sockaddr,
-			 int __user *upeer_addrlen, int flags);
+			 int __user *upeer_addrlen, int flags,
+			 unsigned long nofile);
 extern int __sys_accept4(int fd, struct sockaddr __user *upeer_sockaddr,
 			 int __user *upeer_addrlen, int flags);
 extern int __sys_socket(int family, int type, int protocol);
 extern int __sys_bind(int fd, struct sockaddr __user *umyaddr, int addrlen);
+extern int __sys_connect_file(struct file *file, struct sockaddr_storage *addr,
+			      int addrlen, int file_flags);
 extern int __sys_connect(int fd, struct sockaddr __user *uservaddr,
 			 int addrlen);
 extern int __sys_listen(int fd, int backlog);

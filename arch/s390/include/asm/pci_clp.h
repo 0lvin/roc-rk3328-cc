@@ -77,7 +77,7 @@ struct mio_info {
 	struct {
 		u64 wb;
 		u64 wt;
-	} addr[PCI_BAR_COUNT];
+	} addr[PCI_STD_NUM_BARS];
 	u32 reserved[6];
 } __packed;
 
@@ -93,21 +93,28 @@ struct clp_req_query_pci {
 struct clp_rsp_query_pci {
 	struct clp_rsp_hdr hdr;
 	u16 vfn;			/* virtual fn number */
-	u16			:  6;
+	u16			:  3;
+	u16 rid_avail		:  1;
+	u16 is_physfn		:  1;
+	u16 reserved1		:  1;
 	u16 mio_addr_avail	:  1;
 	u16 util_str_avail	:  1;	/* utility string available? */
 	u16 pfgid		:  8;	/* pci function group id */
 	u32 fid;			/* pci function id */
-	u8 bar_size[PCI_BAR_COUNT];
+	u8 bar_size[PCI_STD_NUM_BARS];
 	u16 pchid;
-	__le32 bar[PCI_BAR_COUNT];
+	__le32 bar[PCI_STD_NUM_BARS];
 	u8 pfip[CLP_PFIP_NR_SEGMENTS];	/* pci function internal path */
-	u32			: 16;
+	u16			: 12;
+	u16 port		:  4;
 	u8 fmb_len;
 	u8 pft;				/* pci function type */
 	u64 sdma;			/* start dma as */
 	u64 edma;			/* end dma as */
-	u32 reserved[11];
+#define ZPCI_RID_MASK_DEVFN 0x00ff
+	u16 rid;			/* BUS/DEVFN PCI address */
+	u16 reserved0;
+	u32 reserved[10];
 	u32 uid;			/* user defined id */
 	u8 util_str[CLP_UTIL_STR_LEN];	/* utility string */
 	u32 reserved2[16];

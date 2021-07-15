@@ -32,35 +32,8 @@ enum dpu_perf_mode {
 static struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
 {
 	struct msm_drm_private *priv;
-
-	if (!crtc->dev || !crtc->dev->dev_private) {
-		DPU_ERROR("invalid device\n");
-		return NULL;
-	}
-
 	priv = crtc->dev->dev_private;
-	if (!priv || !priv->kms) {
-		DPU_ERROR("invalid kms\n");
-		return NULL;
-	}
-
 	return to_dpu_kms(priv->kms);
-}
-
-static bool _dpu_core_video_mode_intf_connected(struct drm_crtc *crtc)
-{
-	struct drm_crtc *tmp_crtc;
-
-	drm_for_each_crtc(tmp_crtc, crtc->dev) {
-		if ((dpu_crtc_get_intf_mode(tmp_crtc) == INTF_MODE_VIDEO) &&
-				tmp_crtc->enabled) {
-			DPU_DEBUG("video interface connected crtc:%d\n",
-				tmp_crtc->base.id);
-			return true;
-		}
-	}
-
-	return false;
 }
 
 static void _dpu_core_perf_calc_crtc(struct dpu_kms *kms,
@@ -105,7 +78,6 @@ int dpu_core_perf_crtc_check(struct drm_crtc *crtc,
 	u32 bw, threshold;
 	u64 bw_sum_of_intfs = 0;
 	enum dpu_crtc_client_type curr_client_type;
-	bool is_video_mode;
 	struct dpu_crtc_state *dpu_cstate;
 	struct drm_crtc *tmp_crtc;
 	struct dpu_kms *kms;
@@ -116,7 +88,7 @@ int dpu_core_perf_crtc_check(struct drm_crtc *crtc,
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid parameters\n");
 		return 0;
 	}
@@ -155,11 +127,7 @@ int dpu_core_perf_crtc_check(struct drm_crtc *crtc,
 		bw = DIV_ROUND_UP_ULL(bw_sum_of_intfs, 1000);
 		DPU_DEBUG("calculated bandwidth=%uk\n", bw);
 
-		is_video_mode = dpu_crtc_get_intf_mode(crtc) == INTF_MODE_VIDEO;
-		threshold = (is_video_mode ||
-			_dpu_core_video_mode_intf_connected(crtc)) ?
-			kms->catalog->perf.max_bw_low :
-			kms->catalog->perf.max_bw_high;
+		threshold = kms->catalog->perf.max_bw_high;
 
 		DPU_DEBUG("final threshold bw limit = %d\n", threshold);
 
@@ -215,7 +183,6 @@ static int _dpu_core_perf_crtc_update_bus(struct dpu_kms *kms,
 void dpu_core_perf_crtc_release_bw(struct drm_crtc *crtc)
 {
 	struct dpu_crtc *dpu_crtc;
-	struct dpu_crtc_state *dpu_cstate;
 	struct dpu_kms *kms;
 
 	if (!crtc) {
@@ -224,13 +191,12 @@ void dpu_core_perf_crtc_release_bw(struct drm_crtc *crtc)
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid kms\n");
 		return;
 	}
 
 	dpu_crtc = to_dpu_crtc(crtc);
-	dpu_cstate = to_dpu_crtc_state(crtc->state);
 
 	if (atomic_dec_return(&kms->bandwidth_ref) > 0)
 		return;
@@ -287,7 +253,6 @@ int dpu_core_perf_crtc_update(struct drm_crtc *crtc,
 	u64 clk_rate = 0;
 	struct dpu_crtc *dpu_crtc;
 	struct dpu_crtc_state *dpu_cstate;
-	struct msm_drm_private *priv;
 	struct dpu_kms *kms;
 	int ret;
 
@@ -297,11 +262,10 @@ int dpu_core_perf_crtc_update(struct drm_crtc *crtc,
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid kms\n");
 		return -EINVAL;
 	}
-	priv = kms->dev->dev_private;
 
 	dpu_crtc = to_dpu_crtc(crtc);
 	dpu_cstate = to_dpu_crtc_state(crtc->state);

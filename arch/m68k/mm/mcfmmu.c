@@ -17,7 +17,6 @@
 
 #include <asm/setup.h>
 #include <asm/page.h>
-#include <asm/pgtable.h>
 #include <asm/mmu_context.h>
 #include <asm/mcf_pgalloc.h>
 #include <asm/tlbflush.h>
@@ -39,7 +38,7 @@ void __init paging_init(void)
 	pte_t *pg_table;
 	unsigned long address, size;
 	unsigned long next_pgtable, bootmem_end;
-	unsigned long zones_size[MAX_NR_ZONES];
+	unsigned long max_zone_pfn[MAX_NR_ZONES] = { 0 };
 	enum zone_type zone;
 	int i;
 
@@ -80,11 +79,8 @@ void __init paging_init(void)
 	}
 
 	current->mm = NULL;
-
-	for (zone = 0; zone < MAX_NR_ZONES; zone++)
-		zones_size[zone] = 0x0;
-	zones_size[ZONE_DMA] = num_pages;
-	free_area_init(zones_size);
+	max_zone_pfn[ZONE_DMA] = PFN_DOWN(_ramend);
+	free_area_init(max_zone_pfn);
 }
 
 int cf_tlb_miss(struct pt_regs *regs, int write, int dtlb, int extension_word)
@@ -92,6 +88,8 @@ int cf_tlb_miss(struct pt_regs *regs, int write, int dtlb, int extension_word)
 	unsigned long flags, mmuar, mmutr;
 	struct mm_struct *mm;
 	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte;
 	int asid;
@@ -113,7 +111,19 @@ int cf_tlb_miss(struct pt_regs *regs, int write, int dtlb, int extension_word)
 		return -1;
 	}
 
-	pmd = pmd_offset(pgd, mmuar);
+	p4d = p4d_offset(pgd, mmuar);
+	if (p4d_none(*p4d)) {
+		local_irq_restore(flags);
+		return -1;
+	}
+
+	pud = pud_offset(p4d, mmuar);
+	if (pud_none(*pud)) {
+		local_irq_restore(flags);
+		return -1;
+	}
+
+	pmd = pmd_offset(pud, mmuar);
 	if (pmd_none(*pmd)) {
 		local_irq_restore(flags);
 		return -1;
@@ -164,7 +174,7 @@ void __init cf_bootmem_alloc(void)
 	m68k_memory[0].addr = _rambase;
 	m68k_memory[0].size = _ramend - _rambase;
 
-	memblock_add(m68k_memory[0].addr, m68k_memory[0].size);
+	memblock_add_node(m68k_memory[0].addr, m68k_memory[0].size, 0);
 
 	/* compute total pages in system */
 	num_pages = PFN_DOWN(_ramend - _rambase);
