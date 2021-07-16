@@ -864,50 +864,49 @@ static int rk808_regulator_dt_parse_pdata(struct device *dev,
 
 static int rk808_regulator_probe(struct platform_device *pdev)
 {
-	struct rk808 *rk818 = dev_get_drvdata(pdev->dev.parent);
-	struct i2c_client *client = rk818->i2c;
+	struct rk808 *rk808 = dev_get_drvdata(pdev->dev.parent);
+	struct i2c_client *client = rk808->i2c;
 	struct regulator_config config = {};
 	struct regulator_dev *rk808_rdev;
-	int ret, i, reg_nr;
-	const struct regulator_desc *reg_desc;
 	struct of_regulator_match *reg_matches;
+	const struct regulator_desc *regulators;
+	int ret, i, nregulators;
 
-	switch (rk818->variant) {
+	switch (rk808->variant) {
 	case RK818_ID:
-		reg_desc = rk818_desc;
+		regulators = rk818_desc;
 		reg_matches = rk818_reg_matches;
-		reg_nr = ARRAY_SIZE(rk818_reg_matches);
+		nregulators = ARRAY_SIZE(rk818_reg_matches);
 		break;
 	case RK805_ID:
-		reg_desc = rk805_desc;
+		regulators = rk805_desc;
 		reg_matches = rk805_reg_matches;
-		reg_nr = RK805_NUM_REGULATORS;
+		nregulators = RK805_NUM_REGULATORS;
 		break;
 	default:
 		dev_err(&client->dev, "unsupported RK8XX ID %lu\n",
-			rk818->variant);
+			rk808->variant);
 		return -EINVAL;
 	}
 
 	ret = rk808_regulator_dt_parse_pdata(&pdev->dev, &client->dev,
-					     rk818->regmap,
-					     reg_matches, reg_nr);
+					     rk808->regmap, reg_matches, nregulators);
 	if (ret < 0)
 		return ret;
 
 	/* Instantiate the regulators */
-	for (i = 0; i < reg_nr; i++) {
+	for (i = 0; i < nregulators; i++) {
 		if (!reg_matches[i].init_data ||
 		    !reg_matches[i].of_node)
 			continue;
 
-		config.driver_data = rk818;
+		config.driver_data = rk808;
 		config.dev = &client->dev;
-		config.regmap = rk818->regmap;
+		config.regmap = rk808->regmap;
 		config.of_node = reg_matches[i].of_node;
 		config.init_data = reg_matches[i].init_data;
 		rk808_rdev = devm_regulator_register(&pdev->dev,
-						     &reg_desc[i], &config);
+						     &regulators[i], &config);
 		if (IS_ERR(rk808_rdev)) {
 			dev_err(&client->dev,
 				"failed to register %d regulator\n", i);
