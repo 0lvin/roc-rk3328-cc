@@ -5,7 +5,6 @@
  * Copyright (c) 2015 ROCKCHIP, Co. Ltd.
  */
 
-#include <linux/devfreq.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/err.h>
@@ -81,12 +80,8 @@ struct rockchip_pmu {
 	const struct rockchip_pmu_info *info;
 	struct mutex mutex; /* mutex lock for pmu */
 	struct genpd_onecell_data genpd_data;
-	struct devfreq *devfreq;
-	struct notifier_block dmc_nb;
 	struct generic_pm_domain *domains[];
 };
-
-static struct rockchip_pmu *dmc_pmu;
 
 #define to_rockchip_pd(gpd) container_of(gpd, struct rockchip_pm_domain, genpd)
 
@@ -712,8 +707,6 @@ static int rockchip_pm_domain_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to add provider: %d\n", error);
 		goto err_out;
 	}
-
-	dmc_pmu = pmu;
 
 	return 0;
 
