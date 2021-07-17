@@ -1143,7 +1143,6 @@ static bool vop_crtc_mode_fixup(struct drm_crtc *crtc,
 				struct drm_display_mode *adjusted_mode)
 {
 	struct vop *vop = to_vop(crtc);
-	/* FIXME:rk3328cc
 	unsigned long rate;
 
 	/*
@@ -1177,14 +1176,8 @@ static bool vop_crtc_mode_fixup(struct drm_crtc *crtc,
 	 * 3. Store the rounded up rate so that we don't need to worry about
 	 *    this in the actual clk_set_rate().
 	 */
-	/* FIXME:rk3328cc
 	rate = clk_round_rate(vop->dclk, adjusted_mode->clock * 1000 + 999);
 	adjusted_mode->clock = DIV_ROUND_UP(rate, 1000);
-	*/
-
-	adjusted_mode->clock =
-		DIV_ROUND_UP(clk_round_rate(vop->dclk,
-					    adjusted_mode->clock * 1000), 1000);
 
 	return true;
 }

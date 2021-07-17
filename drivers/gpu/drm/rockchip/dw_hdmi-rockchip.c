@@ -719,7 +719,6 @@ static int __maybe_unused dw_hdmi_rockchip_suspend(struct device *dev)
 {
 	struct rockchip_hdmi *hdmi = dev_get_drvdata(dev);
 
-	dw_hdmi_suspend(hdmi->hdmi);
 	pm_runtime_put_sync(dev);
 
 	return 0;

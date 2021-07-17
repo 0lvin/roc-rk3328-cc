@@ -955,23 +955,6 @@ static const struct vop_data rk3228_vop = {
 	.win_size = ARRAY_SIZE(rk3228_vop_win_data),
 };
 
-static const int rk3328_vop_intrs[] = {
-	FS_INTR,
-	FS_NEW_INTR,
-	ADDR_SAME_INTR,
-	LINE_FLAG_INTR,
-	LINE_FLAG1_INTR,
-	BUS_ERROR_INTR,
-	WIN0_EMPTY_INTR,
-	WIN1_EMPTY_INTR,
-	WIN2_EMPTY_INTR,
-	WIN3_EMPTY_INTR,
-	HWC_EMPTY_INTR,
-	POST_BUF_EMPTY_INTR,
-	PWM_GEN_INTR,
-	DSP_HOLD_VALID_INTR,
-};
-
 static const struct vop_modeset rk3328_modeset = {
 	.htotal_pw = VOP_REG(RK3328_DSP_HTOTAL_HS_END, 0x1fff1fff, 0),
 	.hact_st_end = VOP_REG(RK3328_DSP_HACT_ST_END, 0x1fff1fff, 0),
@@ -1013,8 +996,8 @@ static const struct vop_common rk3328_common = {
 };
 
 static const struct vop_intr rk3328_vop_intr = {
-	.intrs = rk3328_vop_intrs,
-	.nintrs = ARRAY_SIZE(rk3328_vop_intrs),
+	.intrs = rk3368_vop_intrs,
+	.nintrs = ARRAY_SIZE(rk3368_vop_intrs),
 	.line_flag_num[0] = VOP_REG(RK3328_LINE_FLAG, 0xffff, 0),
 	.line_flag_num[1] = VOP_REG(RK3328_LINE_FLAG, 0xffff, 16),
 	.status = VOP_REG_MASK_SYNC(RK3328_INTR_STATUS0, 0xffff, 0),
