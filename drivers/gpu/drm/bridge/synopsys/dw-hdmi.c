@@ -2770,7 +2770,6 @@ dw_hdmi_bridge_mode_valid(struct drm_bridge *bridge,
 {
 	struct dw_hdmi *hdmi = bridge->driver_private;
 	const struct dw_hdmi_plat_data *pdata = hdmi->plat_data;
-	struct drm_connector *connector = &hdmi->connector;
 	enum drm_mode_status mode_status = MODE_OK;
 
 	/* We don't support double-clocked modes */
@@ -2778,8 +2777,8 @@ dw_hdmi_bridge_mode_valid(struct drm_bridge *bridge,
 		return MODE_BAD;
 
 	if (pdata->mode_valid)
-		mode_status = pdata->mode_valid(hdmi, pdata->priv_data,
-						connector, mode);
+		mode_status = pdata->mode_valid(hdmi, pdata->priv_data, info,
+						mode);
 
 	return mode_status;
 }
