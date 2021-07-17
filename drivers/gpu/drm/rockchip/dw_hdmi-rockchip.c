@@ -156,6 +156,18 @@ static const struct dw_hdmi_mpll_config rockchip_mpll_cfg[] = {
 			{ 0x4064, 0x0003}
 		},
 	}, {
+		297000000, {
+			{ 0x0040, 0x0003 },
+			{ 0x214c, 0x0003 },
+			{ 0x5a64, 0x0003 },
+		},
+	}, {
+		594000000, {
+			{ 0x1a40, 0x0003 },
+			{ 0x3b4c, 0x0003 },
+			{ 0x5a64, 0x0003 },
+		},
+	}, {
 		~0UL, {
 			{ 0x00a0, 0x000a },
 			{ 0x2001, 0x000f },
@@ -180,6 +192,10 @@ static const struct dw_hdmi_curr_ctrl rockchip_cur_ctr[] = {
 		146250000, { 0x0038, 0x0038, 0x0038 },
 	}, {
 		148500000, { 0x0000, 0x0038, 0x0038 },
+	}, { // fix it
+		297000000, { 0x0019, 0x001b, 0x0019 },
+	}, { // fix it
+		594000000, { 0x003f, 0x001b, 0x001b },
 	}, {
 		~0UL,      { 0x0000, 0x0000, 0x0000},
 	}
@@ -260,68 +276,19 @@ dw_hdmi_rockchip_mode_valid(struct dw_hdmi *hdmi, void *data,
 			    const struct drm_display_info *info,
 			    const struct drm_display_mode *mode)
 {
-	struct drm_encoder *encoder = connector->encoder;
-	enum drm_mode_status status = MODE_OK;
-	struct drm_device *dev = connector->dev;
-	struct rockchip_drm_private *priv = dev->dev_private;
-	struct drm_crtc *crtc;
+	const struct dw_hdmi_mpll_config *mpll_cfg = rockchip_mpll_cfg;
+	int pclk = mode->clock * 1000;
+	bool valid = false;
+	int i;
 
-	/*
-	 * Pixel clocks we support are always < 2GHz and so fit in an
-	 * int.  We should make sure source rate does too so we don't get
-	 * overflow when we multiply by 1000.
-	 */
-	if (mode->clock > INT_MAX / 1000)
-		return MODE_BAD;
-	/*
-	 * If sink max TMDS clock < 340MHz, we should check the mode pixel
-	 * clock > 340MHz is YCbCr420 or not.
-	 */
-	if (mode->clock > 340000 &&
-	    connector->display_info.max_tmds_clock < 340000 &&
-	    !drm_mode_is_420(&connector->display_info, mode))
-		return MODE_BAD;
-
-	if (!encoder) {
-		const struct drm_connector_helper_funcs *funcs;
-
-		funcs = connector->helper_private;
-		if (funcs->atomic_best_encoder)
-			encoder = funcs->atomic_best_encoder(connector,
-							     connector->state);
-		else if (funcs->best_encoder)
-			encoder = funcs->best_encoder(connector);
-		else {
-			dump_stack();
-			encoder = drm_connector_get_single_encoder(connector);
+	for (i = 0; mpll_cfg[i].mpixelclock != (~0UL); i++) {
+		if (pclk == mpll_cfg[i].mpixelclock) {
+			valid = true;
+			break;
 		}
 	}
 
-	if (!encoder || !encoder->possible_crtcs)
-		return MODE_BAD;
-
-	/*
-	 * ensure all drm display mode can work, if someone want support more
-	 * resolutions, please limit the possible_crtc, only connect to
-	 * needed crtc.
-	 */
-	drm_for_each_crtc(crtc, connector->dev) {
-		int pipe = drm_crtc_index(crtc);
-		const struct rockchip_crtc_funcs *funcs =
-						priv->crtc_funcs[pipe];
-
-		if (!(encoder->possible_crtcs & drm_crtc_mask(crtc)))
-			continue;
-		if (!funcs || !funcs->mode_valid)
-			continue;
-
-		status = funcs->mode_valid(crtc, mode,
-					   DRM_MODE_CONNECTOR_HDMIA);
-		if (status != MODE_OK)
-			return status;
-	}
-
-	return status;
+	return (valid) ? MODE_OK : MODE_BAD;
 }
 
 static void dw_hdmi_rockchip_encoder_disable(struct drm_encoder *encoder)
