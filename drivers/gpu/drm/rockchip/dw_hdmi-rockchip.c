@@ -80,8 +80,6 @@ struct rockchip_hdmi {
 	struct phy *phy;
 	struct clk *hclk_vio;
 	struct clk *dclk;
-
-	unsigned int phy_bus_width;
 };
 
 #define to_rockchip_hdmi(x)	container_of(x, struct rockchip_hdmi, x)
@@ -368,9 +366,6 @@ static void dw_hdmi_rockchip_encoder_enable(struct drm_encoder *encoder)
 
 	if (hdmi->chip_data->lcdsel_grf_reg < 0)
 		return;
-
-	if (hdmi->phy)
-		phy_set_bus_width(hdmi->phy, hdmi->phy_bus_width);
 
 	clk_set_rate(hdmi->dclk, crtc->state->adjusted_mode.crtc_clock * 1000);
 	clk_prepare_enable(hdmi->dclk);
