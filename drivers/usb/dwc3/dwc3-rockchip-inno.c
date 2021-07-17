@@ -76,19 +76,19 @@ static int dwc3_rockchip_host_testmode_show(struct seq_file *s, void *unused)
 	case 0:
 		seq_puts(s, "U2: no test\n");
 		break;
-	case TEST_J:
+	case USB_TEST_J:
 		seq_puts(s, "U2: test_j\n");
 		break;
-	case TEST_K:
+	case USB_TEST_K:
 		seq_puts(s, "U2: test_k\n");
 		break;
-	case TEST_SE0_NAK:
+	case USB_TEST_SE0_NAK:
 		seq_puts(s, "U2: test_se0_nak\n");
 		break;
-	case TEST_PACKET:
+	case USB_TEST_PACKET:
 		seq_puts(s, "U2: test_packet\n");
 		break;
-	case TEST_FORCE_EN:
+	case USB_TEST_FORCE_ENABLE:
 		seq_puts(s, "U2: test_force_enable\n");
 		break;
 	default:
@@ -138,11 +138,11 @@ static int dwc3_rockchip_set_test_mode(struct dwc3_rockchip *rockchip,
 	}
 
 	switch (mode) {
-	case TEST_J:
-	case TEST_K:
-	case TEST_SE0_NAK:
-	case TEST_PACKET:
-	case TEST_FORCE_EN:
+	case USB_TEST_J:
+	case USB_TEST_K:
+	case USB_TEST_SE0_NAK:
+	case USB_TEST_PACKET:
+	case USB_TEST_FORCE_ENABLE:
 		rhub = &xhci->usb2_rhub;
 		reg = readl(rhub->ports[0]->addr + 1);
 		reg &= ~XHCI_TSTCTRL_MASK;
@@ -190,15 +190,15 @@ static ssize_t dwc3_rockchip_host_testmode_write(struct file *file,
 		return -EFAULT;
 
 	if (!strncmp(buf, "test_j", 6)) {
-		testmode = TEST_J;
+		testmode = USB_TEST_J;
 	} else if (!strncmp(buf, "test_k", 6)) {
-		testmode = TEST_K;
+		testmode = USB_TEST_K;
 	} else if (!strncmp(buf, "test_se0_nak", 12)) {
-		testmode = TEST_SE0_NAK;
+		testmode = USB_TEST_SE0_NAK;
 	} else if (!strncmp(buf, "test_packet", 11)) {
-		testmode = TEST_PACKET;
+		testmode = USB_TEST_PACKET;
 	} else if (!strncmp(buf, "test_force_enable", 17)) {
-		testmode = TEST_FORCE_EN;
+		testmode = USB_TEST_FORCE_ENABLE;
 	} else if (!strncmp(buf, "test_u3", 7)) {
 		testmode = USB_SS_PORT_LS_COMP_MOD;
 	} else {
