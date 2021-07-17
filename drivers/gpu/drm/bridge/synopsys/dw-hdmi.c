@@ -117,7 +117,6 @@ struct hdmi_data_info {
 	unsigned int hdcp_enable;
 	struct hdmi_vmode video_mode;
 	bool rgb_limited_range;
-	bool update;
 };
 
 struct dw_hdmi_i2c {
@@ -202,7 +201,6 @@ struct dw_hdmi {
 	unsigned int audio_cts;
 	unsigned int audio_n;
 	bool audio_enable;
-	bool scramble_low_rates;
 
 	int irq;
 
@@ -372,9 +370,8 @@ static void dw_hdmi_i2c_init(struct dw_hdmi *hdmi)
 	/* Software reset */
 	hdmi_writeb(hdmi, 0x00, HDMI_I2CM_SOFTRSTZ);
 
-	/* Set Standard Mode speed */
-	hdmi_modb(hdmi, HDMI_I2CM_DIV_STD_MODE,
-		  HDMI_I2CM_DIV_FAST_STD_MODE, HDMI_I2CM_DIV);
+	/* Set Standard Mode speed (determined to be 100KHz on iMX6) */
+	hdmi_writeb(hdmi, 0x00, HDMI_I2CM_DIV);
 
 	/* Set done, not acknowledged and arbitration interrupt polarities */
 	hdmi_writeb(hdmi, HDMI_I2CM_INT_DONE_POL, HDMI_I2CM_INT);
@@ -1251,15 +1248,18 @@ static void hdmi_video_packetize(struct dw_hdmi *hdmi)
 	}
 
 	/* set the packetizer registers */
-	val = (color_depth << HDMI_VP_PR_CD_COLOR_DEPTH_OFFSET) &
-	      HDMI_VP_PR_CD_COLOR_DEPTH_MASK;
+	val = ((color_depth << HDMI_VP_PR_CD_COLOR_DEPTH_OFFSET) &
+		HDMI_VP_PR_CD_COLOR_DEPTH_MASK) |
+		((hdmi_data->pix_repet_factor <<
+		HDMI_VP_PR_CD_DESIRED_PR_FACTOR_OFFSET) &
+		HDMI_VP_PR_CD_DESIRED_PR_FACTOR_MASK);
 	hdmi_writeb(hdmi, val, HDMI_VP_PR_CD);
 
 	hdmi_modb(hdmi, HDMI_VP_STUFF_PR_STUFFING_STUFFING_MODE,
 		  HDMI_VP_STUFF_PR_STUFFING_MASK, HDMI_VP_STUFF);
 
 	/* Data from pixel repeater block */
-	if (hdmi_data->pix_repet_factor > 0) {
+	if (hdmi_data->pix_repet_factor > 1) {
 		vp_conf = HDMI_VP_CONF_PR_EN_ENABLE |
 			  HDMI_VP_CONF_BYPASS_SELECT_PIX_REPEATER;
 	} else { /* data from packetizer block */
@@ -1271,13 +1271,8 @@ static void hdmi_video_packetize(struct dw_hdmi *hdmi)
 		  HDMI_VP_CONF_PR_EN_MASK |
 		  HDMI_VP_CONF_BYPASS_SELECT_MASK, HDMI_VP_CONF);
 
-	if ((color_depth == 5 && hdmi->previous_mode.htotal % 4) ||
-	    (color_depth == 6 && hdmi->previous_mode.htotal % 2))
-		hdmi_modb(hdmi, 0, HDMI_VP_STUFF_IDEFAULT_PHASE_MASK,
-			  HDMI_VP_STUFF);
-	else
-		hdmi_modb(hdmi, 1 << HDMI_VP_STUFF_IDEFAULT_PHASE_OFFSET,
-			HDMI_VP_STUFF_IDEFAULT_PHASE_MASK, HDMI_VP_STUFF);
+	hdmi_modb(hdmi, 1 << HDMI_VP_STUFF_IDEFAULT_PHASE_OFFSET,
+		  HDMI_VP_STUFF_IDEFAULT_PHASE_MASK, HDMI_VP_STUFF);
 
 	hdmi_writeb(hdmi, remap_size, HDMI_VP_REMAP);
 
@@ -1797,10 +1792,6 @@ static void hdmi_config_AVI(struct dw_hdmi *hdmi, struct drm_display_mode *mode)
 			frame.extended_colorimetry =
 					HDMI_EXTENDED_COLORIMETRY_XV_YCC_709;
 			break;
-		case V4L2_YCBCR_ENC_BT2020:
-			frame.extended_colorimetry =
-					HDMI_EXTENDED_COLORIMETRY_BT2020;
-			break;
 		default: /* Carries no data */
 			frame.colorimetry = HDMI_COLORIMETRY_ITU_601;
 			frame.extended_colorimetry =
@@ -1886,10 +1877,6 @@ static void hdmi_config_vendor_specific_infoframe(struct dw_hdmi *hdmi,
 	u8 buffer[10];
 	ssize_t err;
 
-	/* Disable HDMI vendor specific infoframe send */
-	hdmi_mask_writeb(hdmi, 0, HDMI_FC_DATAUTO0, HDMI_FC_DATAUTO0_VSD_OFFSET,
-			HDMI_FC_DATAUTO0_VSD_MASK);
-
 	err = drm_hdmi_vendor_infoframe_from_display_mode(&frame,
 							  &hdmi->connector,
 							  mode);
@@ -1908,6 +1895,8 @@ static void hdmi_config_vendor_specific_infoframe(struct dw_hdmi *hdmi,
 			err);
 		return;
 	}
+	hdmi_mask_writeb(hdmi, 0, HDMI_FC_DATAUTO0, HDMI_FC_DATAUTO0_VSD_OFFSET,
+			HDMI_FC_DATAUTO0_VSD_MASK);
 
 	/* Set the length of HDMI vendor specific InfoFrame payload */
 	hdmi_writeb(hdmi, buffer[2], HDMI_FC_VSDSIZE);
@@ -2103,9 +2092,6 @@ static void hdmi_av_composer(struct dw_hdmi *hdmi,
 		vblank /= 2;
 		v_de_vs /= 2;
 		vsync_len /= 2;
-	} else if ((mode->flags & DRM_MODE_FLAG_3D_MASK) ==
-		DRM_MODE_FLAG_3D_FRAME_PACKING) {
-		vdisplay += mode->vtotal;
 	}
 
 	/* Scrambling Control */
@@ -2879,7 +2865,6 @@ static int dw_hdmi_bridge_attach(struct drm_bridge *bridge,
 	}
 
 	connector->interlace_allowed = 1;
-	connector->stereo_allowed = 1;
 	connector->polled = DRM_CONNECTOR_POLL_HPD;
 
 	drm_connector_helper_add(connector, &dw_hdmi_connector_helper_funcs);
@@ -3107,7 +3092,12 @@ static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
 		}
 	}
 
-	check_hdmi_irq(hdmi, intr_stat, phy_int_pol);
+	if (intr_stat & HDMI_IH_PHY_STAT0_HPD) {
+		dev_dbg(hdmi->dev, "EVENT=%s\n",
+			phy_int_pol & HDMI_PHY_HPD ? "plugin" : "plugout");
+		if (hdmi->bridge.dev)
+			drm_helper_hpd_irq_event(hdmi->bridge.dev);
+	}
 
 	hdmi_writeb(hdmi, intr_stat, HDMI_IH_PHY_STAT0);
 	hdmi_writeb(hdmi, ~(HDMI_IH_PHY_STAT0_HPD | HDMI_IH_PHY_STAT0_RX_SENSE),
@@ -3475,11 +3465,6 @@ __dw_hdmi_probe(struct platform_device *pdev,
 			hdmi->i2c->scl_low_ns = 4916;
 	}
 
-	if (hdmi->version == 0x200a)
-		hdmi->connector.ycbcr_420_allowed = false;
-	else
-		hdmi->connector.ycbcr_420_allowed = true;
-
 	hdmi->bridge.driver_private = hdmi;
 	hdmi->bridge.funcs = &dw_hdmi_bridge_funcs;
 #ifdef CONFIG_OF
@@ -3556,9 +3541,6 @@ __dw_hdmi_probe(struct platform_device *pdev,
 	/* Reset HDMI DDC I2C master controller and mute I2CM interrupts */
 	if (hdmi->i2c)
 		dw_hdmi_i2c_init(hdmi);
-
-	if (of_property_read_bool(np, "scramble-low-rates"))
-		hdmi->scramble_low_rates = true;
 
 	return hdmi;
 
