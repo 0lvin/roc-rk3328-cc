@@ -868,7 +868,7 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 
 #define OAREPORTTRIG1 _MMIO(0x2740)
 #define OAREPORTTRIG1_THRESHOLD_MASK 0xffff
-#define OAREPORTTRIG1_EDGE_LEVEL_TRIGER_SELECT_MASK 0xffff0000 /* 0=level */
+#define OAREPORTTRIG1_EDGE_LEVEL_TRIGGER_SELECT_MASK 0xffff0000 /* 0=level */
 
 #define OAREPORTTRIG2 _MMIO(0x2744)
 #define OAREPORTTRIG2_INVERT_A_0  (1 << 0)
@@ -921,7 +921,7 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 
 #define OAREPORTTRIG5 _MMIO(0x2750)
 #define OAREPORTTRIG5_THRESHOLD_MASK 0xffff
-#define OAREPORTTRIG5_EDGE_LEVEL_TRIGER_SELECT_MASK 0xffff0000 /* 0=level */
+#define OAREPORTTRIG5_EDGE_LEVEL_TRIGGER_SELECT_MASK 0xffff0000 /* 0=level */
 
 #define OAREPORTTRIG6 _MMIO(0x2754)
 #define OAREPORTTRIG6_INVERT_A_0  (1 << 0)
@@ -1974,6 +1974,8 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define ICL_PORT_PCS_DW1_AUX(phy)	_MMIO(_ICL_PORT_PCS_DW_AUX(1, phy))
 #define ICL_PORT_PCS_DW1_GRP(phy)	_MMIO(_ICL_PORT_PCS_DW_GRP(1, phy))
 #define ICL_PORT_PCS_DW1_LN0(phy)	_MMIO(_ICL_PORT_PCS_DW_LN(1, 0, phy))
+#define   DCC_MODE_SELECT_MASK		(0x3 << 20)
+#define   DCC_MODE_SELECT_CONTINUOSLY	(0x3 << 20)
 #define   COMMON_KEEPER_EN		(1 << 26)
 #define   LATENCY_OPTIM_MASK		(0x3 << 2)
 #define   LATENCY_OPTIM_VAL(x)		((x) << 2)
@@ -2071,6 +2073,13 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define ICL_PORT_TX_DW7_LN(ln, phy)	_MMIO(_ICL_PORT_TX_DW_LN(7, ln, phy))
 #define   N_SCALAR(x)			((x) << 24)
 #define   N_SCALAR_MASK			(0x7F << 24)
+
+#define ICL_PORT_TX_DW8_AUX(phy)		_MMIO(_ICL_PORT_TX_DW_AUX(8, phy))
+#define ICL_PORT_TX_DW8_GRP(phy)		_MMIO(_ICL_PORT_TX_DW_GRP(8, phy))
+#define ICL_PORT_TX_DW8_LN0(phy)		_MMIO(_ICL_PORT_TX_DW_LN(8, 0, phy))
+#define   ICL_PORT_TX_DW8_ODCC_CLK_SEL		REG_BIT(31)
+#define   ICL_PORT_TX_DW8_ODCC_CLK_DIV_SEL_MASK	REG_GENMASK(30, 29)
+#define   ICL_PORT_TX_DW8_ODCC_CLK_DIV_SEL_DIV2	REG_FIELD_PREP(ICL_PORT_TX_DW8_ODCC_CLK_DIV_SEL_MASK, 0x1)
 
 #define _ICL_DPHY_CHKN_REG			0x194
 #define ICL_DPHY_CHKN(port)			_MMIO(_ICL_COMBOPHY(port) + _ICL_DPHY_CHKN_REG)
@@ -2827,6 +2836,7 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define VLV_GU_CTL0	_MMIO(VLV_DISPLAY_BASE + 0x2030)
 #define VLV_GU_CTL1	_MMIO(VLV_DISPLAY_BASE + 0x2034)
 #define SCPD0		_MMIO(0x209c) /* 915+ only */
+#define  SCPD_FBC_IGNORE_3D			(1 << 6)
 #define  CSTATE_RENDER_CLOCK_GATE_DISABLE	(1 << 5)
 #define GEN2_IER	_MMIO(0x20a0)
 #define GEN2_IIR	_MMIO(0x20a4)
@@ -3208,13 +3218,17 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define FBC_CFB_BASE		_MMIO(0x3200) /* 4k page aligned */
 #define FBC_LL_BASE		_MMIO(0x3204) /* 4k page aligned */
 #define FBC_CONTROL		_MMIO(0x3208)
-#define   FBC_CTL_EN		(1 << 31)
-#define   FBC_CTL_PERIODIC	(1 << 30)
-#define   FBC_CTL_INTERVAL_SHIFT (16)
-#define   FBC_CTL_UNCOMPRESSIBLE (1 << 14)
-#define   FBC_CTL_C3_IDLE	(1 << 13)
-#define   FBC_CTL_STRIDE_SHIFT	(5)
-#define   FBC_CTL_FENCENO_SHIFT	(0)
+#define   FBC_CTL_EN		REG_BIT(31)
+#define   FBC_CTL_PERIODIC	REG_BIT(30)
+#define   FBC_CTL_INTERVAL_MASK	REG_GENMASK(29, 16)
+#define   FBC_CTL_INTERVAL(x)	REG_FIELD_PREP(FBC_CTL_INTERVAL_MASK, (x))
+#define   FBC_CTL_STOP_ON_MOD	REG_BIT(15)
+#define   FBC_CTL_UNCOMPRESSIBLE REG_BIT(14) /* i915+ */
+#define   FBC_CTL_C3_IDLE	REG_BIT(13) /* i945gm */
+#define   FBC_CTL_STRIDE_MASK	REG_GENMASK(12, 5)
+#define   FBC_CTL_STRIDE(x)	REG_FIELD_PREP(FBC_CTL_STRIDE_MASK, (x))
+#define   FBC_CTL_FENCENO_MASK	REG_GENMASK(3, 0)
+#define   FBC_CTL_FENCENO(x)	REG_FIELD_PREP(FBC_CTL_FENCENO_MASK, (x))
 #define FBC_COMMAND		_MMIO(0x320c)
 #define   FBC_CMD_COMPRESS	(1 << 0)
 #define FBC_STATUS		_MMIO(0x3210)
@@ -4584,6 +4598,18 @@ enum {
 #define PSR2_SU_STATUS_SHIFT(frame)	(((frame) % 3) * 10)
 #define PSR2_SU_STATUS_MASK(frame)	(0x3ff << PSR2_SU_STATUS_SHIFT(frame))
 #define PSR2_SU_STATUS_FRAMES		8
+
+#define _PSR2_MAN_TRK_CTL_A				0x60910
+#define _PSR2_MAN_TRK_CTL_EDP				0x6f910
+#define PSR2_MAN_TRK_CTL(tran)				_MMIO_TRANS2(tran, _PSR2_MAN_TRK_CTL_A)
+#define  PSR2_MAN_TRK_CTL_ENABLE			REG_BIT(31)
+#define  PSR2_MAN_TRK_CTL_SU_REGION_START_ADDR_MASK	REG_GENMASK(30, 21)
+#define  PSR2_MAN_TRK_CTL_SU_REGION_START_ADDR(val)	REG_FIELD_PREP(PSR2_MAN_TRK_CTL_SU_REGION_START_ADDR_MASK, val)
+#define  PSR2_MAN_TRK_CTL_SU_REGION_END_ADDR_MASK		REG_GENMASK(20, 11)
+#define  PSR2_MAN_TRK_CTL_SU_REGION_END_ADDR(val)		REG_FIELD_PREP(PSR2_MAN_TRK_CTL_SU_REGION_END_ADDR_MASK, val)
+#define  PSR2_MAN_TRK_CTL_SF_SINGLE_FULL_FRAME		REG_BIT(3)
+#define  PSR2_MAN_TRK_CTL_SF_CONTINUOS_FULL_FRAME	REG_BIT(2)
+#define  PSR2_MAN_TRK_CTL_SF_PARTIAL_FRAME_UPDATE	REG_BIT(1)
 
 /* VGA port control */
 #define ADPA			_MMIO(0x61100)
@@ -7148,7 +7174,52 @@ enum {
 #define PLANE_COLOR_CTL(pipe, plane)	\
 	_MMIO_PLANE(plane, _PLANE_COLOR_CTL_1(pipe), _PLANE_COLOR_CTL_2(pipe))
 
-#/* SKL new cursor registers */
+#define _SEL_FETCH_PLANE_BASE_1_A		0x70890
+#define _SEL_FETCH_PLANE_BASE_2_A		0x708B0
+#define _SEL_FETCH_PLANE_BASE_3_A		0x708D0
+#define _SEL_FETCH_PLANE_BASE_4_A		0x708F0
+#define _SEL_FETCH_PLANE_BASE_5_A		0x70920
+#define _SEL_FETCH_PLANE_BASE_6_A		0x70940
+#define _SEL_FETCH_PLANE_BASE_7_A		0x70960
+#define _SEL_FETCH_PLANE_BASE_CUR_A		0x70880
+#define _SEL_FETCH_PLANE_BASE_1_B		0x70990
+
+#define _SEL_FETCH_PLANE_BASE_A(plane) _PICK(plane, \
+					     _SEL_FETCH_PLANE_BASE_1_A, \
+					     _SEL_FETCH_PLANE_BASE_2_A, \
+					     _SEL_FETCH_PLANE_BASE_3_A, \
+					     _SEL_FETCH_PLANE_BASE_4_A, \
+					     _SEL_FETCH_PLANE_BASE_5_A, \
+					     _SEL_FETCH_PLANE_BASE_6_A, \
+					     _SEL_FETCH_PLANE_BASE_7_A, \
+					     _SEL_FETCH_PLANE_BASE_CUR_A)
+#define _SEL_FETCH_PLANE_BASE_1(pipe) _PIPE(pipe, _SEL_FETCH_PLANE_BASE_1_A, _SEL_FETCH_PLANE_BASE_1_B)
+#define _SEL_FETCH_PLANE_BASE(pipe, plane) (_SEL_FETCH_PLANE_BASE_1(pipe) - \
+					    _SEL_FETCH_PLANE_BASE_1_A + \
+					    _SEL_FETCH_PLANE_BASE_A(plane))
+
+#define _SEL_FETCH_PLANE_CTL_1_A		0x70890
+#define PLANE_SEL_FETCH_CTL(pipe, plane) _MMIO(_SEL_FETCH_PLANE_BASE(pipe, plane) + \
+					       _SEL_FETCH_PLANE_CTL_1_A - \
+					       _SEL_FETCH_PLANE_BASE_1_A)
+#define PLANE_SEL_FETCH_CTL_ENABLE		REG_BIT(31)
+
+#define _SEL_FETCH_PLANE_POS_1_A		0x70894
+#define PLANE_SEL_FETCH_POS(pipe, plane) _MMIO(_SEL_FETCH_PLANE_BASE(pipe, plane) + \
+					       _SEL_FETCH_PLANE_POS_1_A - \
+					       _SEL_FETCH_PLANE_BASE_1_A)
+
+#define _SEL_FETCH_PLANE_SIZE_1_A		0x70898
+#define PLANE_SEL_FETCH_SIZE(pipe, plane) _MMIO(_SEL_FETCH_PLANE_BASE(pipe, plane) + \
+						_SEL_FETCH_PLANE_SIZE_1_A - \
+						_SEL_FETCH_PLANE_BASE_1_A)
+
+#define _SEL_FETCH_PLANE_OFFSET_1_A		0x7089C
+#define PLANE_SEL_FETCH_OFFSET(pipe, plane) _MMIO(_SEL_FETCH_PLANE_BASE(pipe, plane) + \
+						  _SEL_FETCH_PLANE_OFFSET_1_A - \
+						  _SEL_FETCH_PLANE_BASE_1_A)
+
+/* SKL new cursor registers */
 #define _CUR_BUF_CFG_A				0x7017c
 #define _CUR_BUF_CFG_B				0x7117c
 #define CUR_BUF_CFG(pipe)	_MMIO_PIPE(pipe, _CUR_BUF_CFG_A, _CUR_BUF_CFG_B)
@@ -7662,6 +7733,10 @@ enum {
 #define  GEN11_GT_DW1_IRQ		(1 << 1)
 #define  GEN11_GT_DW0_IRQ		(1 << 0)
 
+#define DG1_MSTR_UNIT_INTR		_MMIO(0x190008)
+#define   DG1_MSTR_IRQ			REG_BIT(31)
+#define   DG1_MSTR_UNIT(u)		REG_BIT(u)
+
 #define GEN11_DISPLAY_INT_CTL		_MMIO(0x44200)
 #define  GEN11_DISPLAY_IRQ_ENABLE	(1 << 31)
 #define  GEN11_AUDIO_CODEC_IRQ		(1 << 24)
@@ -7794,11 +7869,12 @@ enum {
 # define CHICKEN3_DGMG_REQ_OUT_FIX_DISABLE	(1 << 5)
 # define CHICKEN3_DGMG_DONE_FIX_DISABLE		(1 << 2)
 
-#define CHICKEN_PAR1_1		_MMIO(0x42080)
+#define CHICKEN_PAR1_1			_MMIO(0x42080)
 #define  SKL_DE_COMPRESSED_HASH_MODE	(1 << 15)
-#define  DPA_MASK_VBLANK_SRD	(1 << 15)
-#define  FORCE_ARB_IDLE_PLANES	(1 << 14)
-#define  SKL_EDP_PSR_FIX_RDWRAP	(1 << 3)
+#define  DPA_MASK_VBLANK_SRD		(1 << 15)
+#define  FORCE_ARB_IDLE_PLANES		(1 << 14)
+#define  SKL_EDP_PSR_FIX_RDWRAP		(1 << 3)
+#define  IGNORE_PSR2_HW_TRACKING	(1 << 1)
 
 #define CHICKEN_PAR2_1		_MMIO(0x42090)
 #define  KVM_CONFIG_CHANGE_NOTIFICATION_SELECT	(1 << 14)
@@ -7879,6 +7955,12 @@ enum {
 #define   CNL_DELAY_PMRSP		(1 << 22)
 #define   MASK_WAKEMEM			(1 << 13)
 #define   CNL_DDI_CLOCK_REG_ACCESS_ON	(1 << 7)
+
+#define GEN11_CHICKEN_DCPR_2			_MMIO(0x46434)
+#define   DCPR_MASK_MAXLATENCY_MEMUP_CLR	REG_BIT(27)
+#define   DCPR_MASK_LPMODE			REG_BIT(26)
+#define   DCPR_SEND_RESP_IMM			REG_BIT(25)
+#define   DCPR_CLEAR_MEMSTAT_DIS		REG_BIT(24)
 
 #define SKL_DFSM			_MMIO(0x51000)
 #define   SKL_DFSM_DISPLAY_PM_DISABLE	(1 << 27)

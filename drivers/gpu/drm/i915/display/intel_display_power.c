@@ -1817,8 +1817,8 @@ void chv_phy_powergate_lanes(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct i915_power_domains *power_domains = &dev_priv->power_domains;
-	enum dpio_phy phy = vlv_dport_to_phy(enc_to_dig_port(encoder));
-	enum dpio_channel ch = vlv_dport_to_channel(enc_to_dig_port(encoder));
+	enum dpio_phy phy = vlv_dig_port_to_phy(enc_to_dig_port(encoder));
+	enum dpio_channel ch = vlv_dig_port_to_channel(enc_to_dig_port(encoder));
 
 	mutex_lock(&power_domains->lock);
 
@@ -4147,6 +4147,12 @@ static const struct i915_power_well_desc tgl_power_wells[] = {
 		},
 	},
 	{
+		.name = "TC cold off",
+		.domains = TGL_TC_COLD_OFF_POWER_DOMAINS,
+		.ops = &tgl_tc_cold_off_ops,
+		.id = DISP_PW_ID_NONE,
+	},
+	{
 		.name = "AUX A",
 		.domains = TGL_AUX_A_IO_POWER_DOMAINS,
 		.ops = &icl_aux_power_well_ops,
@@ -4331,12 +4337,6 @@ static const struct i915_power_well_desc tgl_power_wells[] = {
 			.hsw.has_fuses = true,
 			.hsw.irq_pipe_mask = BIT(PIPE_D),
 		},
-	},
-	{
-		.name = "TC cold off",
-		.domains = TGL_TC_COLD_OFF_POWER_DOMAINS,
-		.ops = &tgl_tc_cold_off_ops,
-		.id = DISP_PW_ID_NONE,
 	},
 };
 
@@ -5240,10 +5240,10 @@ struct buddy_page_mask {
 };
 
 static const struct buddy_page_mask tgl_buddy_page_masks[] = {
-	{ .num_channels = 1, .type = INTEL_DRAM_LPDDR4, .page_mask = 0xE },
 	{ .num_channels = 1, .type = INTEL_DRAM_DDR4,   .page_mask = 0xF },
 	{ .num_channels = 2, .type = INTEL_DRAM_LPDDR4, .page_mask = 0x1C },
 	{ .num_channels = 2, .type = INTEL_DRAM_DDR4,   .page_mask = 0x1F },
+	{ .num_channels = 4, .type = INTEL_DRAM_LPDDR4, .page_mask = 0x38 },
 	{}
 };
 
@@ -5298,6 +5298,7 @@ static void icl_display_core_init(struct drm_i915_private *dev_priv,
 {
 	struct i915_power_domains *power_domains = &dev_priv->power_domains;
 	struct i915_power_well *well;
+	u32 val;
 
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 
@@ -5331,6 +5332,13 @@ static void icl_display_core_init(struct drm_i915_private *dev_priv,
 
 	if (resume && dev_priv->csr.dmc_payload)
 		intel_csr_load_program(dev_priv);
+
+	/* Wa_14011508470 */
+	if (IS_GEN(dev_priv, 12)) {
+		val = DCPR_CLEAR_MEMSTAT_DIS | DCPR_SEND_RESP_IMM |
+		      DCPR_MASK_LPMODE | DCPR_MASK_MAXLATENCY_MEMUP_CLR;
+		intel_uncore_rmw(&dev_priv->uncore, GEN11_CHICKEN_DCPR_2, 0, val);
+	}
 }
 
 static void icl_display_core_uninit(struct drm_i915_private *dev_priv)

@@ -548,7 +548,7 @@ EXPORT_SYMBOL(drm_gtf_mode_complex);
  * Generalized Timing Formula is derived from:
  *
  *	GTF Spreadsheet by Andy Morrish (1/5/97)
- *	available at http://www.vesa.org
+ *	available at https://www.vesa.org
  *
  * And it is copied from the file of xserver/hw/xfree86/modes/xf86gtf.c.
  * What I have done is to translate it by using integer calculation.
@@ -1930,7 +1930,7 @@ void drm_mode_convert_to_umode(struct drm_mode_modeinfo *out,
 	default:
 		WARN(1, "Invalid aspect ratio (0%x) on mode\n",
 		     in->picture_aspect_ratio);
-		/* fall through */
+		fallthrough;
 	case HDMI_PICTURE_ASPECT_NONE:
 		out->flags |= DRM_MODE_FLAG_PIC_AR_NONE;
 		break;

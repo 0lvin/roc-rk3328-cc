@@ -35,6 +35,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_uapi.h>
+#include <drm/drm_damage_helper.h>
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_fourcc.h>
@@ -1611,13 +1612,13 @@ static void chv_disable_pll(struct drm_i915_private *dev_priv, enum pipe pipe)
 }
 
 void vlv_wait_port_ready(struct drm_i915_private *dev_priv,
-			 struct intel_digital_port *dport,
+			 struct intel_digital_port *dig_port,
 			 unsigned int expected_mask)
 {
 	u32 port_mask;
 	i915_reg_t dpll_reg;
 
-	switch (dport->base.port) {
+	switch (dig_port->base.port) {
 	case PORT_B:
 		port_mask = DPLL_PORTB_READY_MASK;
 		dpll_reg = DPLL(0);
@@ -1639,7 +1640,7 @@ void vlv_wait_port_ready(struct drm_i915_private *dev_priv,
 				       port_mask, expected_mask, 1000))
 		drm_WARN(&dev_priv->drm, 1,
 			 "timed out waiting for [ENCODER:%d:%s] port ready: got 0x%x, expected 0x%x\n",
-			 dport->base.base.base.id, dport->base.base.name,
+			 dig_port->base.base.base.id, dig_port->base.base.name,
 			 intel_de_read(dev_priv, dpll_reg) & port_mask,
 			 expected_mask);
 }
@@ -2028,12 +2029,12 @@ intel_tile_width_bytes(const struct drm_framebuffer *fb, int color_plane)
 	case I915_FORMAT_MOD_Y_TILED_CCS:
 		if (is_ccs_plane(fb, color_plane))
 			return 128;
-		/* fall through */
+		fallthrough;
 	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
 	case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
 		if (is_ccs_plane(fb, color_plane))
 			return 64;
-		/* fall through */
+		fallthrough;
 	case I915_FORMAT_MOD_Y_TILED:
 		if (IS_GEN(dev_priv, 2) || HAS_128_BYTE_Y_TILING(dev_priv))
 			return 128;
@@ -2042,7 +2043,7 @@ intel_tile_width_bytes(const struct drm_framebuffer *fb, int color_plane)
 	case I915_FORMAT_MOD_Yf_TILED_CCS:
 		if (is_ccs_plane(fb, color_plane))
 			return 128;
-		/* fall through */
+		fallthrough;
 	case I915_FORMAT_MOD_Yf_TILED:
 		switch (cpp) {
 		case 1:
@@ -2184,7 +2185,7 @@ static unsigned int intel_surf_alignment(const struct drm_framebuffer *fb,
 	case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
 		if (is_semiplanar_uv_plane(fb, color_plane))
 			return intel_tile_row_size(fb, color_plane);
-		/* Fall-through */
+		fallthrough;
 	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
 		return 16 * 1024;
 	case I915_FORMAT_MOD_Y_TILED_CCS:
@@ -2193,7 +2194,7 @@ static unsigned int intel_surf_alignment(const struct drm_framebuffer *fb,
 		if (INTEL_GEN(dev_priv) >= 12 &&
 		    is_semiplanar_uv_plane(fb, color_plane))
 			return intel_tile_row_size(fb, color_plane);
-		/* Fall-through */
+		fallthrough;
 	case I915_FORMAT_MOD_Yf_TILED:
 		return 1 * 1024 * 1024;
 	default:
@@ -6210,7 +6211,7 @@ static int skl_update_scaler_plane(struct intel_crtc_state *crtc_state,
 	case DRM_FORMAT_ARGB16161616F:
 		if (INTEL_GEN(dev_priv) >= 11)
 			break;
-		/* fall through */
+		fallthrough;
 	default:
 		drm_dbg_kms(&dev_priv->drm,
 			    "[PLANE:%d:%s] FB:%d unsupported scaling format 0x%x\n",
@@ -7526,6 +7527,10 @@ static void i9xx_crtc_enable(struct intel_atomic_state *state,
 	intel_crtc_vblank_on(new_crtc_state);
 
 	intel_encoders_enable(state, crtc);
+
+	/* prevents spurious underruns */
+	if (IS_GEN(dev_priv, 2))
+		intel_wait_for_vblank(dev_priv, pipe);
 }
 
 static void i9xx_pfit_disable(const struct intel_crtc_state *old_crtc_state)
@@ -10068,7 +10073,8 @@ static void ilk_set_pipeconf(const struct intel_crtc_state *crtc_state)
 	drm_WARN_ON(&dev_priv->drm, crtc_state->limited_color_range &&
 		    crtc_state->output_format != INTEL_OUTPUT_FORMAT_RGB);
 
-	if (crtc_state->limited_color_range)
+	if (crtc_state->limited_color_range &&
+	    !intel_crtc_has_type(crtc_state, INTEL_OUTPUT_SDVO))
 		val |= PIPECONF_COLOR_RANGE_SELECT;
 
 	if (crtc_state->output_format != INTEL_OUTPUT_FORMAT_RGB)
@@ -10890,7 +10896,7 @@ static void hsw_get_ddi_pll(struct drm_i915_private *dev_priv, enum port port,
 		break;
 	default:
 		MISSING_CASE(ddi_pll_sel);
-		/* fall through */
+		fallthrough;
 	case PORT_CLK_SEL_NONE:
 		return;
 	}
@@ -10950,10 +10956,10 @@ static bool hsw_get_transcoder_state(struct intel_crtc *crtc,
 			drm_WARN(dev, 1,
 				 "unknown pipe linked to transcoder %s\n",
 				 transcoder_name(panel_transcoder));
-			/* fall through */
+			fallthrough;
 		case TRANS_DDI_EDP_INPUT_A_ONOFF:
 			force_thru = true;
-			/* fall through */
+			fallthrough;
 		case TRANS_DDI_EDP_INPUT_A_ON:
 			trans_pipe = PIPE_A;
 			break;
@@ -12592,12 +12598,15 @@ static u16 hsw_linetime_wm(const struct intel_crtc_state *crtc_state)
 {
 	const struct drm_display_mode *adjusted_mode =
 		&crtc_state->hw.adjusted_mode;
+	int linetime_wm;
 
 	if (!crtc_state->hw.enable)
 		return 0;
 
-	return DIV_ROUND_CLOSEST(adjusted_mode->crtc_htotal * 1000 * 8,
-				 adjusted_mode->crtc_clock);
+	linetime_wm = DIV_ROUND_CLOSEST(adjusted_mode->crtc_htotal * 1000 * 8,
+					adjusted_mode->crtc_clock);
+
+	return min(linetime_wm, 0x1ff);
 }
 
 static u16 hsw_ips_linetime_wm(const struct intel_crtc_state *crtc_state,
@@ -12605,12 +12614,15 @@ static u16 hsw_ips_linetime_wm(const struct intel_crtc_state *crtc_state,
 {
 	const struct drm_display_mode *adjusted_mode =
 		&crtc_state->hw.adjusted_mode;
+	int linetime_wm;
 
 	if (!crtc_state->hw.enable)
 		return 0;
 
-	return DIV_ROUND_CLOSEST(adjusted_mode->crtc_htotal * 1000 * 8,
-				 cdclk_state->logical.cdclk);
+	linetime_wm = DIV_ROUND_CLOSEST(adjusted_mode->crtc_htotal * 1000 * 8,
+					cdclk_state->logical.cdclk);
+
+	return min(linetime_wm, 0x1ff);
 }
 
 static u16 skl_linetime_wm(const struct intel_crtc_state *crtc_state)
@@ -12619,7 +12631,7 @@ static u16 skl_linetime_wm(const struct intel_crtc_state *crtc_state)
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	const struct drm_display_mode *adjusted_mode =
 		&crtc_state->hw.adjusted_mode;
-	u16 linetime_wm;
+	int linetime_wm;
 
 	if (!crtc_state->hw.enable)
 		return 0;
@@ -12631,7 +12643,7 @@ static u16 skl_linetime_wm(const struct intel_crtc_state *crtc_state)
 	if (IS_GEN9_LP(dev_priv) && dev_priv->ipc_enabled)
 		linetime_wm /= 2;
 
-	return linetime_wm;
+	return min(linetime_wm, 0x1ff);
 }
 
 static int hsw_compute_linetime_wm(struct intel_atomic_state *state,
@@ -13171,7 +13183,7 @@ static bool check_digital_port_conflicts(struct intel_atomic_state *state)
 		case INTEL_OUTPUT_DDI:
 			if (drm_WARN_ON(dev, !HAS_DDI(to_i915(dev))))
 				break;
-			/* else, fall through */
+			fallthrough;
 		case INTEL_OUTPUT_DP:
 		case INTEL_OUTPUT_HDMI:
 		case INTEL_OUTPUT_EDP:
@@ -14918,7 +14930,7 @@ static int intel_atomic_check(struct drm_device *dev,
 	if (any_ms && !check_digital_port_conflicts(state)) {
 		drm_dbg_kms(&dev_priv->drm,
 			    "rejecting conflicting digital port configuration\n");
-		ret = EINVAL;
+		ret = -EINVAL;
 		goto fail;
 	}
 
@@ -14944,12 +14956,6 @@ static int intel_atomic_check(struct drm_device *dev,
 	if (dev_priv->wm.distrust_bios_wm)
 		any_ms = true;
 
-	if (any_ms) {
-		ret = intel_modeset_checks(state);
-		if (ret)
-			goto fail;
-	}
-
 	intel_fbc_choose_crtc(dev_priv, state);
 	ret = calc_watermark_data(state);
 	if (ret)
@@ -14964,6 +14970,10 @@ static int intel_atomic_check(struct drm_device *dev,
 		goto fail;
 
 	if (any_ms) {
+		ret = intel_modeset_checks(state);
+		if (ret)
+			goto fail;
+
 		ret = intel_modeset_calc_cdclk(state);
 		if (ret)
 			return ret;
@@ -16321,7 +16331,8 @@ intel_primary_plane_create(struct drm_i915_private *dev_priv, enum pipe pipe)
 	 * On gen2/3 only plane A can do FBC, but the panel fitter and LVDS
 	 * port is hooked to pipe B. Hence we want plane A feeding pipe B.
 	 */
-	if (HAS_FBC(dev_priv) && INTEL_GEN(dev_priv) < 4)
+	if (HAS_FBC(dev_priv) && INTEL_GEN(dev_priv) < 4 &&
+	    INTEL_NUM_PIPES(dev_priv) == 2)
 		plane->i9xx_plane = (enum i9xx_plane_id) !pipe;
 	else
 		plane->i9xx_plane = (enum i9xx_plane_id) pipe;
@@ -16485,6 +16496,9 @@ intel_cursor_plane_create(struct drm_i915_private *dev_priv,
 
 	zpos = RUNTIME_INFO(dev_priv)->num_sprites[pipe] + 1;
 	drm_plane_create_zpos_immutable_property(&cursor->base, zpos);
+
+	if (INTEL_GEN(dev_priv) >= 12)
+		drm_plane_enable_fb_damage_clips(&cursor->base);
 
 	drm_plane_helper_add(&cursor->base, &intel_plane_helper_funcs);
 

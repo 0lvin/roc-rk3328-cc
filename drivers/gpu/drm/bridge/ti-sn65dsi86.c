@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
- * datasheet: http://www.ti.com/lit/ds/symlink/sn65dsi86.pdf
+ * datasheet: https://www.ti.com/lit/ds/symlink/sn65dsi86.pdf
  */
 
 #include <linux/bits.h>
@@ -212,6 +212,8 @@ static int __maybe_unused ti_sn_bridge_suspend(struct device *dev)
 
 static const struct dev_pm_ops ti_sn_bridge_pm_ops = {
 	SET_RUNTIME_PM_OPS(ti_sn_bridge_suspend, ti_sn_bridge_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
+				pm_runtime_force_resume)
 };
 
 static int status_show(struct seq_file *s, void *data)
@@ -602,13 +604,13 @@ static void ti_sn_bridge_read_valid_rates(struct ti_sn_bridge *pdata,
 		DRM_DEV_ERROR(pdata->dev,
 			      "Unexpected max rate (%#x); assuming 5.4 GHz\n",
 			      (int)dpcd_val);
-		/* fall through */
+		fallthrough;
 	case DP_LINK_BW_5_4:
 		rate_valid[7] = 1;
-		/* fall through */
+		fallthrough;
 	case DP_LINK_BW_2_7:
 		rate_valid[4] = 1;
-		/* fall through */
+		fallthrough;
 	case DP_LINK_BW_1_62:
 		rate_valid[1] = 1;
 		break;
