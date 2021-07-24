@@ -9,7 +9,6 @@
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/of.h>
-#include <dt-bindings/display/rk_fb.h>
 #include <linux/slab.h>
 #include <soc/rockchip/rockchip_sip.h>
 #include "clk.h"
