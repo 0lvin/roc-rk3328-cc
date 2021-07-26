@@ -661,7 +661,6 @@
 		clock-names = "aclk", "iface";
 		#iommu-cells = <0>;
 		status = "disabled";
-		power-domains = <&power RK3328_PD_HEVC>;
 	};
 
 	vepu_mmu: iommu@ff340800 {

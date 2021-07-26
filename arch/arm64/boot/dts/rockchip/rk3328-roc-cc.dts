@@ -27,31 +27,15 @@
 		#clock-cells = <0>;
 	};
 
-	sdio_pwrseq: sdio-pwrseq {
-		compatible = "mmc-pwrseq-simple";
+	vcc_host_5v: vcc-host-5v-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_host_5v";
+		regulator-always-on;
+		enable-active-high;
+		gpio = <&gpio0 0 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&wifi_enable_h>;
-
-		/*
-		 * On the module itself this is one of these (depending
-		 * on the actual card populated):
-		 * - SDIO_RESET_L_WL_REG_ON
-		 * - PDN (power down when low)
-		 */
-		reset-gpios = <&gpio1 18 GPIO_ACTIVE_LOW>;
-	};
-
-	sound {
-		compatible = "simple-audio-card";
-		simple-audio-card,format = "i2s";
-		simple-audio-card,mclk-fs = <256>;
-		simple-audio-card,name = "rockchip,rk3328";
-		simple-audio-card,cpu {
-			sound-dai = <&i2s1>;
-		};
-		simple-audio-card,codec {
-			sound-dai = <&codec>;
-		};
+		pinctrl-0 = <&usb30_host_drv>;
+		vin-supply = <&vcc_sys>;
 	};
 
 	vcc_sd: sdmmc-regulator {
@@ -89,6 +73,33 @@
 		regulator-always-on;
 	};
 
+	sdio_pwrseq: sdio-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		pinctrl-names = "default";
+		pinctrl-0 = <&wifi_enable_h>;
+
+		/*
+		 * On the module itself this is one of these (depending
+		 * on the actual card populated):
+		 * - SDIO_RESET_L_WL_REG_ON
+		 * - PDN (power down when low)
+		 */
+		reset-gpios = <&gpio1 18 GPIO_ACTIVE_LOW>;
+	};
+
+	sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,mclk-fs = <256>;
+		simple-audio-card,name = "rockchip,rk3328";
+		simple-audio-card,cpu {
+			sound-dai = <&i2s1>;
+		};
+		simple-audio-card,codec {
+			sound-dai = <&codec>;
+		};
+	};
+
 	vccio_sd: sdmmcio-regulator {
 		compatible = "regulator-gpio";
 		gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>;
@@ -99,17 +110,6 @@
 		regulator-min-microvolt = <1800000>;
 		regulator-max-microvolt = <3300000>;
 		status="disabled";
-	};
-
-	vcc_host_5v: vcc-host-5v-regulator {
-		compatible = "regulator-fixed";
-		enable-active-high;
-		gpio = <&gpio0 0 GPIO_ACTIVE_HIGH>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&usb30_host_drv>;
-		regulator-name = "vcc_host_5v";
-		regulator-always-on;
-		vin-supply = <&vcc_sys>;
 	};
 
 	vcc_sys: vcc-sys {
@@ -507,7 +507,7 @@
 	cap-mmc-highspeed;
 	cap-sd-highspeed;
 	disable-wp;
-	clock-freq-min-max = <400000 80000000>;
+	max-frequency = <150000000>;
 	clocks = <&cru HCLK_SDMMC>, <&cru SCLK_SDMMC>,
 			 <&cru SCLK_SDMMC_DRV>, <&cru SCLK_SDMMC_SAMPLE>;
 	clock-names = "biu", "ciu", "ciu-drive", "ciu-sample";
