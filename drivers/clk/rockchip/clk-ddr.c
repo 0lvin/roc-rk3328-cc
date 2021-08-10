@@ -13,8 +13,6 @@
 #include <soc/rockchip/rockchip_sip.h>
 #include "clk.h"
 
-#define MHZ		(1000000)
-
 struct rockchip_ddrclk {
 	struct clk_hw	hw;
 	void __iomem	*reg_base;
