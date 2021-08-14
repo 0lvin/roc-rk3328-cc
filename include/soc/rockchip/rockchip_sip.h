@@ -27,9 +27,6 @@
 #define SIP_SIP_VERSION		0x8200000a
 #define SIP_REMOTECTL_CFG	0x8200000b
 
-/* Rockchip Sip version */
-#define SIP_IMPLEMENT_V2                (2)
-
 /* SIP_ACCESS_REG: read or write */
 #define SECURE_REG_WR			0x1
 
