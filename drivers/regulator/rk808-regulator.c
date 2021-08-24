@@ -587,7 +587,7 @@ static int rk808_regulator_dt_parse_pdata(struct device *dev,
 				   int regulator_nr)
 {
 	struct device_node *np;
-	int ret;
+	int tmp, ret = 0, i;
 
 	np = of_get_child_by_name(client_dev->of_node, "regulators");
 	if (!np)
@@ -605,9 +605,16 @@ static int rk808_regulator_probe(struct platform_device *pdev)
 	struct i2c_client *client = rk808->i2c;
 	struct regulator_config config = {};
 	struct regulator_dev *rk808_rdev;
+	struct rk808_regulator_data *pdata;
 	struct of_regulator_match *reg_matches;
 	const struct regulator_desc *regulators;
 	int ret, i, nregulators;
+
+	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		return -ENOMEM;
+
+	platform_set_drvdata(pdev, pdata);
 
 	switch (rk808->variant) {
 	case RK805_ID:
