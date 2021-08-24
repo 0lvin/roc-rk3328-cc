@@ -215,44 +215,130 @@ static const struct linear_range rk817_buck3_voltage_ranges[] = {
 			       RK817_BUCK3_SEL_CNT, RK817_BUCK1_STP1),
 };
 
-static const struct linear_range rk805_buck_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),	/* 0.7125v - 1.45v */
-	REGULATOR_LINEAR_RANGE(1800000, 60, 62, 200000),/* 1.8v - 2.2v */
-	REGULATOR_LINEAR_RANGE(2300000, 63, 63, 0),	/* 2.3v - 2.3v */
-};
+static int rk808_buck1_2_get_voltage_sel_regmap(struct regulator_dev *rdev)
+{
+	struct rk808_regulator_data *pdata = rdev_get_drvdata(rdev);
+	int id = rdev_get_id(rdev);
+	struct gpio_desc *gpio = pdata->dvs_gpio[id];
+	unsigned int val;
+	int ret;
 
-static const struct linear_range rk805_buck4_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4 */
-	REGULATOR_LINEAR_RANGE(3500000, 27, 31, 0),	/* 3.5v */
-};
+	if (!gpio || gpiod_get_value(gpio) == 0)
+		return regulator_get_voltage_sel_regmap(rdev);
 
-static const struct linear_range rk805_ldo_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4 */
-};
+	ret = regmap_read(rdev->regmap,
+			  rdev->desc->vsel_reg + RK808_DVS_REG_OFFSET,
+			  &val);
+	if (ret != 0)
+		return ret;
 
-/* rk818 */
-static const struct linear_range rk818_buck_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(712500, 0, 63, 12500),
-};
+	val &= rdev->desc->vsel_mask;
+	val >>= ffs(rdev->desc->vsel_mask) - 1;
 
-static const struct linear_range rk818_buck4_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(1800000, 0, 15, 100000),
-};
+	return val;
+}
 
-static const struct linear_range rk818_ldo_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(1800000, 0, 16, 100000),
-};
+static int rk808_buck1_2_i2c_set_voltage_sel(struct regulator_dev *rdev,
+					     unsigned sel)
+{
+	int ret, delta_sel;
+	unsigned int old_sel, tmp, val, mask = rdev->desc->vsel_mask;
 
-static const struct linear_range rk818_ldo6_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(800000, 0, 17, 100000),
-};
+	ret = regmap_read(rdev->regmap, rdev->desc->vsel_reg, &val);
+	if (ret != 0)
+		return ret;
 
-static const struct linear_range rk818_boost_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(4700000, 0, 7, 100000),
-};
+	tmp = val & ~mask;
+	old_sel = val & mask;
+	old_sel >>= ffs(mask) - 1;
+	delta_sel = sel - old_sel;
 
-#define RK805_SLP_LDO_EN_OFFSET		-1
-#define RK805_SLP_DCDC_EN_OFFSET	2
+	/*
+	 * If directly modify the register to change the voltage, we will face
+	 * the risk of overshoot. Put it into a multi-step, can effectively
+	 * avoid this problem, a step is 100mv here.
+	 */
+	while (delta_sel > MAX_STEPS_ONE_TIME) {
+		old_sel += MAX_STEPS_ONE_TIME;
+		val = old_sel << (ffs(mask) - 1);
+		val |= tmp;
+
+		/*
+		 * i2c is 400kHz (2.5us per bit) and we must transmit _at least_
+		 * 3 bytes (24 bits) plus start and stop so 26 bits.  So we've
+		 * got more than 65 us between each voltage change and thus
+		 * won't ramp faster than ~1500 uV / us.
+		 */
+		ret = regmap_write(rdev->regmap, rdev->desc->vsel_reg, val);
+		delta_sel = sel - old_sel;
+	}
+
+	sel <<= ffs(mask) - 1;
+	val = tmp | sel;
+	ret = regmap_write(rdev->regmap, rdev->desc->vsel_reg, val);
+
+	/*
+	 * When we change the voltage register directly, the ramp rate is about
+	 * 100000uv/us, wait 1us to make sure the target voltage to be stable,
+	 * so we needn't wait extra time after that.
+	 */
+	udelay(1);
+
+	return ret;
+}
+
+static int rk808_buck1_2_set_voltage_sel(struct regulator_dev *rdev,
+					 unsigned sel)
+{
+	struct rk808_regulator_data *pdata = rdev_get_drvdata(rdev);
+	int id = rdev_get_id(rdev);
+	struct gpio_desc *gpio = pdata->dvs_gpio[id];
+	unsigned int reg = rdev->desc->vsel_reg;
+	unsigned old_sel;
+	int ret, gpio_level;
+
+	if (!gpio)
+		return rk808_buck1_2_i2c_set_voltage_sel(rdev, sel);
+
+	gpio_level = gpiod_get_value(gpio);
+	if (gpio_level == 0) {
+		reg += RK808_DVS_REG_OFFSET;
+		ret = regmap_read(rdev->regmap, rdev->desc->vsel_reg, &old_sel);
+	} else {
+		ret = regmap_read(rdev->regmap,
+				  reg + RK808_DVS_REG_OFFSET,
+				  &old_sel);
+	}
+
+	if (ret != 0)
+		return ret;
+
+	sel <<= ffs(rdev->desc->vsel_mask) - 1;
+	sel |= old_sel & ~rdev->desc->vsel_mask;
+
+	ret = regmap_write(rdev->regmap, reg, sel);
+	if (ret)
+		return ret;
+
+	gpiod_set_value(gpio, !gpio_level);
+
+	return ret;
+}
+
+static int rk808_buck1_2_set_voltage_time_sel(struct regulator_dev *rdev,
+				       unsigned int old_selector,
+				       unsigned int new_selector)
+{
+	struct rk808_regulator_data *pdata = rdev_get_drvdata(rdev);
+	int id = rdev_get_id(rdev);
+	struct gpio_desc *gpio = pdata->dvs_gpio[id];
+
+	/* if there is no dvs1/2 pin, we don't need wait extra time here. */
+	if (!gpio)
+		return 0;
+
+	return regulator_set_voltage_time_sel(rdev, old_selector, new_selector);
+}
 
 static int rk818_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 {
@@ -308,6 +394,39 @@ static int rk818_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 	return regmap_update_bits(rdev->regmap, reg,
 				  RK808_RAMP_RATE_MASK, ramp_value);
 }
+
+static const struct linear_range rk805_buck4_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4 */
+	REGULATOR_LINEAR_RANGE(3500000, 27, 31, 0),	/* 3.5v */
+};
+
+static const struct linear_range rk805_ldo_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4 */
+};
+
+/* rk818 */
+static const struct linear_range rk818_buck_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(712500, 0, 63, 12500),
+};
+
+static const struct linear_range rk818_buck4_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(1800000, 0, 15, 100000),
+};
+
+static const struct linear_range rk818_ldo_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(1800000, 0, 16, 100000),
+};
+
+static const struct linear_range rk818_ldo6_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(800000, 0, 17, 100000),
+};
+
+static const struct linear_range rk818_boost_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(4700000, 0, 7, 100000),
+};
+
+#define RK805_SLP_LDO_EN_OFFSET		-1
+#define RK805_SLP_DCDC_EN_OFFSET	2
 
 /*
  * RK817 RK809
@@ -414,6 +533,21 @@ static int rk818_set_suspend_disable(struct regulator_dev *rdev)
 				  disable_val);
 }
 
+static int rk808_set_suspend_voltage_range(struct regulator_dev *rdev, int uv)
+{
+	unsigned int reg;
+	int sel = regulator_map_voltage_linear_range(rdev, uv, uv);
+
+	if (sel < 0)
+		return -EINVAL;
+
+	reg = rdev->desc->vsel_reg + RK808_SLP_REG_OFFSET;
+
+	return regmap_update_bits(rdev->regmap, reg,
+				  rdev->desc->vsel_mask,
+				  sel);
+}
+
 static int rk8xx_set_suspend_mode(struct regulator_dev *rdev, unsigned int mode)
 {
 	unsigned int reg;
@@ -495,6 +629,20 @@ static struct regulator_ops rk818_buck1_2_ops = {
 	.set_suspend_disable	= rk818_set_suspend_disable,
 };
 
+static const struct regulator_ops rk808_switch_ops = {
+	.enable			= regulator_enable_regmap,
+	.disable		= regulator_disable_regmap,
+	.is_enabled		= regulator_is_enabled_regmap,
+	.set_suspend_enable	= rk818_set_suspend_enable,
+	.set_suspend_disable	= rk818_set_suspend_disable,
+};
+
+static const struct linear_range rk805_buck_1_2_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),	/* 0.7125v - 1.45v */
+	REGULATOR_LINEAR_RANGE(1800000, 60, 62, 200000),/* 1.8v - 2.2v */
+	REGULATOR_LINEAR_RANGE(2300000, 63, 63, 0),	/* 2.3v - 2.3v */
+};
+
 static struct regulator_ops rk818_reg_ops = {
 	.list_voltage		= regulator_list_voltage_linear_range,
 	.map_voltage		= regulator_map_voltage_linear_range,
@@ -530,8 +678,8 @@ static const struct regulator_desc rk805_desc[] = {
 		.ops = &rk818_buck1_2_ops,
 		.type = REGULATOR_VOLTAGE,
 		.n_voltages = 64,
-		.linear_ranges = rk805_buck_voltage_ranges,
-		.n_linear_ranges = ARRAY_SIZE(rk805_buck_voltage_ranges),
+		.linear_ranges = rk805_buck_1_2_voltage_ranges,
+		.n_linear_ranges = ARRAY_SIZE(rk805_buck_1_2_voltage_ranges),
 		.vsel_reg = RK805_BUCK1_ON_VSEL_REG,
 		.vsel_mask = RK808_BUCK_VSEL_MASK,
 		.enable_reg = RK805_DCDC_EN_REG,
@@ -546,8 +694,8 @@ static const struct regulator_desc rk805_desc[] = {
 		.ops = &rk818_buck1_2_ops,
 		.type = REGULATOR_VOLTAGE,
 		.n_voltages = 64,
-		.linear_ranges = rk805_buck_voltage_ranges,
-		.n_linear_ranges = ARRAY_SIZE(rk805_buck_voltage_ranges),
+		.linear_ranges = rk805_buck_1_2_voltage_ranges,
+		.n_linear_ranges = ARRAY_SIZE(rk805_buck_1_2_voltage_ranges),
 		.vsel_reg = RK805_BUCK2_ON_VSEL_REG,
 		.vsel_mask = RK808_BUCK_VSEL_MASK,
 		.enable_reg = RK805_DCDC_EN_REG,
