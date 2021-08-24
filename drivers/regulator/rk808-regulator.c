@@ -165,6 +165,56 @@ static const int rk808_buck_config_regs[] = {
 	RK808_BUCK4_CONFIG_REG,
 };
 
+static const struct linear_range rk808_ldo3_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(800000, 0, 13, 100000),
+	REGULATOR_LINEAR_RANGE(2500000, 15, 15, 0),
+};
+
+#define RK809_BUCK5_SEL_CNT		(8)
+
+static const struct linear_range rk809_buck5_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(1500000, 0, 0, 0),
+	REGULATOR_LINEAR_RANGE(1800000, 1, 3, 200000),
+	REGULATOR_LINEAR_RANGE(2800000, 4, 5, 200000),
+	REGULATOR_LINEAR_RANGE(3300000, 6, 7, 300000),
+};
+
+#define RK817_BUCK1_MIN0 500000
+#define RK817_BUCK1_MAX0 1500000
+
+#define RK817_BUCK1_MIN1 1600000
+#define RK817_BUCK1_MAX1 2400000
+
+#define RK817_BUCK3_MAX1 3400000
+
+#define RK817_BUCK1_STP0 12500
+#define RK817_BUCK1_STP1 100000
+
+#define RK817_BUCK1_SEL0 ((RK817_BUCK1_MAX0 - RK817_BUCK1_MIN0) /\
+						  RK817_BUCK1_STP0)
+#define RK817_BUCK1_SEL1 ((RK817_BUCK1_MAX1 - RK817_BUCK1_MIN1) /\
+						  RK817_BUCK1_STP1)
+
+#define RK817_BUCK3_SEL1 ((RK817_BUCK3_MAX1 - RK817_BUCK1_MIN1) /\
+						  RK817_BUCK1_STP1)
+
+#define RK817_BUCK1_SEL_CNT (RK817_BUCK1_SEL0 + RK817_BUCK1_SEL1 + 1)
+#define RK817_BUCK3_SEL_CNT (RK817_BUCK1_SEL0 + RK817_BUCK3_SEL1 + 1)
+
+static const struct linear_range rk817_buck1_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(RK817_BUCK1_MIN0, 0,
+			       RK817_BUCK1_SEL0, RK817_BUCK1_STP0),
+	REGULATOR_LINEAR_RANGE(RK817_BUCK1_MIN1, RK817_BUCK1_SEL0 + 1,
+			       RK817_BUCK1_SEL_CNT, RK817_BUCK1_STP1),
+};
+
+static const struct linear_range rk817_buck3_voltage_ranges[] = {
+	REGULATOR_LINEAR_RANGE(RK817_BUCK1_MIN0, 0,
+			       RK817_BUCK1_SEL0, RK817_BUCK1_STP0),
+	REGULATOR_LINEAR_RANGE(RK817_BUCK1_MIN1, RK817_BUCK1_SEL0 + 1,
+			       RK817_BUCK3_SEL_CNT, RK817_BUCK1_STP1),
+};
+
 static const struct linear_range rk805_buck_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),	/* 0.7125v - 1.45v */
 	REGULATOR_LINEAR_RANGE(1800000, 60, 62, 200000),/* 1.8v - 2.2v */
@@ -191,11 +241,6 @@ static const struct linear_range rk818_buck4_voltage_ranges[] = {
 
 static const struct linear_range rk818_ldo_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(1800000, 0, 16, 100000),
-};
-
-static const struct linear_range rk808_ldo3_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(800000, 0, 13, 100000),
-	REGULATOR_LINEAR_RANGE(2500000, 15, 15, 0),
 };
 
 static const struct linear_range rk818_ldo6_voltage_ranges[] = {
@@ -262,6 +307,36 @@ static int rk818_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 
 	return regmap_update_bits(rdev->regmap, reg,
 				  RK808_RAMP_RATE_MASK, ramp_value);
+}
+
+/*
+ * RK817 RK809
+ */
+static int rk817_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
+{
+	unsigned int ramp_value = RK817_RAMP_RATE_25MV_PER_US;
+	unsigned int reg = RK817_BUCK_CONFIG_REG(rdev_get_id(rdev));
+
+	switch (ramp_delay) {
+	case 0 ... 3000:
+		ramp_value = RK817_RAMP_RATE_3MV_PER_US;
+		break;
+	case 3001 ... 6300:
+		ramp_value = RK817_RAMP_RATE_6_3MV_PER_US;
+		break;
+	case 6301 ... 12500:
+		ramp_value = RK817_RAMP_RATE_12_5MV_PER_US;
+		break;
+	case 12501 ... 25000:
+		break;
+	default:
+		dev_warn(&rdev->dev,
+			 "%s ramp_delay: %d not supported, setting 25000\n",
+			 rdev->desc->name, ramp_delay);
+	}
+
+	return regmap_update_bits(rdev->regmap, reg,
+				  RK817_RAMP_RATE_MASK, ramp_value);
 }
 
 static int rk808_set_suspend_voltage(struct regulator_dev *rdev, int uv)
@@ -348,9 +423,10 @@ static int rk8xx_set_suspend_mode(struct regulator_dev *rdev, unsigned int mode)
 	switch (mode) {
 	case REGULATOR_MODE_FAST:
 		return regmap_update_bits(rdev->regmap, reg,
-					  FPWM_MODE, FPWM_MODE);
+					  PWM_MODE_MSK, FPWM_MODE);
 	case REGULATOR_MODE_NORMAL:
-		return regmap_update_bits(rdev->regmap, reg, FPWM_MODE, 0);
+		return regmap_update_bits(rdev->regmap, reg,
+					  PWM_MODE_MSK, AUTO_PWM_MODE);
 	default:
 		dev_err(&rdev->dev, "do not support this mode\n");
 		return -EINVAL;
@@ -364,10 +440,10 @@ static int rk8xx_set_mode(struct regulator_dev *rdev, unsigned int mode)
 	switch (mode) {
 	case REGULATOR_MODE_FAST:
 		return regmap_update_bits(rdev->regmap, rdev->desc->vsel_reg,
-					  FPWM_MODE, FPWM_MODE);
+					  PWM_MODE_MSK, FPWM_MODE);
 	case REGULATOR_MODE_NORMAL:
 		return regmap_update_bits(rdev->regmap, rdev->desc->vsel_reg,
-					  FPWM_MODE, 0);
+					  PWM_MODE_MSK, AUTO_PWM_MODE);
 	default:
 		dev_err(&rdev->dev, "do not support this mode\n");
 		return -EINVAL;
