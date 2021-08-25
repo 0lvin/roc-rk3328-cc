@@ -16,13 +16,15 @@
 #include <linux/regulator/driver.h>
 #include <linux/spmi.h>
 
+struct hi6421_spmi_reg_priv {
+	/* Serialize regulator enable logic */
+	struct mutex enable_mutex;
+};
+
 struct hi6421_spmi_reg_info {
 	struct regulator_desc	desc;
 	u8			eco_mode_mask;
 	u32			eco_uA;
-
-	/* Serialize regulator enable logic */
-	struct mutex enable_mutex;
 };
 
 static const unsigned int ldo3_voltages[] = {
@@ -96,11 +98,12 @@ static const unsigned int ldo34_voltages[] = {
 
 static int hi6421_spmi_regulator_enable(struct regulator_dev *rdev)
 {
-	struct hi6421_spmi_reg_info *sreg = rdev_get_drvdata(rdev);
+	struct hi6421_spmi_reg_priv *priv;
 	int ret;
 
+	priv = dev_get_drvdata(rdev->dev.parent);
 	/* cannot enable more than one regulator at one time */
-	mutex_lock(&sreg->enable_mutex);
+	mutex_lock(&priv->enable_mutex);
 
 	ret = regmap_update_bits(rdev->regmap, rdev->desc->enable_reg,
 				 rdev->desc->enable_mask,
@@ -109,7 +112,7 @@ static int hi6421_spmi_regulator_enable(struct regulator_dev *rdev)
 	/* Avoid powering up multiple devices at the same time */
 	usleep_range(rdev->desc->off_on_delay, rdev->desc->off_on_delay + 60);
 
-	mutex_unlock(&sreg->enable_mutex);
+	mutex_unlock(&priv->enable_mutex);
 
 	return ret;
 }
@@ -117,7 +120,7 @@ static int hi6421_spmi_regulator_enable(struct regulator_dev *rdev)
 static unsigned int hi6421_spmi_regulator_get_mode(struct regulator_dev *rdev)
 {
 	struct hi6421_spmi_reg_info *sreg = rdev_get_drvdata(rdev);
-	u32 reg_val;
+	unsigned int reg_val;
 
 	regmap_read(rdev->regmap, rdev->desc->enable_reg, &reg_val);
 
@@ -131,14 +134,17 @@ static int hi6421_spmi_regulator_set_mode(struct regulator_dev *rdev,
 					  unsigned int mode)
 {
 	struct hi6421_spmi_reg_info *sreg = rdev_get_drvdata(rdev);
-	u32 val;
+	unsigned int val;
 
 	switch (mode) {
 	case REGULATOR_MODE_NORMAL:
 		val = 0;
 		break;
 	case REGULATOR_MODE_IDLE:
-		val = sreg->eco_mode_mask << (ffs(sreg->eco_mode_mask) - 1);
+		if (!sreg->eco_mode_mask)
+			return -EINVAL;
+
+		val = sreg->eco_mode_mask;
 		break;
 	default:
 		return -EINVAL;
@@ -166,7 +172,7 @@ static const struct regulator_ops hi6421_spmi_ldo_rops = {
 	.enable = hi6421_spmi_regulator_enable,
 	.disable = regulator_disable_regmap,
 	.list_voltage = regulator_list_voltage_table,
-	.map_voltage = regulator_map_voltage_iterate,
+	.map_voltage = regulator_map_voltage_ascend,
 	.get_voltage_sel = regulator_get_voltage_sel_regmap,
 	.set_voltage_sel = regulator_set_voltage_sel_regmap,
 	.get_mode = hi6421_spmi_regulator_get_mode,
@@ -225,7 +231,7 @@ static int hi6421_spmi_regulator_probe(struct platform_device *pdev)
 {
 	struct device *pmic_dev = pdev->dev.parent;
 	struct regulator_config config = { };
-	struct hi6421_spmi_reg_info *sreg;
+	struct hi6421_spmi_reg_priv *priv;
 	struct hi6421_spmi_reg_info *info;
 	struct device *dev = &pdev->dev;
 	struct hi6421_spmi_pmic *pmic;
@@ -241,17 +247,18 @@ static int hi6421_spmi_regulator_probe(struct platform_device *pdev)
 	if (WARN_ON(!pmic))
 		return -ENODEV;
 
-	sreg = devm_kzalloc(dev, sizeof(*sreg), GFP_KERNEL);
-	if (!sreg)
+	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
 		return -ENOMEM;
 
-	mutex_init(&sreg->enable_mutex);
+	mutex_init(&priv->enable_mutex);
+	platform_set_drvdata(pdev, priv);
 
 	for (i = 0; i < ARRAY_SIZE(regulator_info); i++) {
 		info = &regulator_info[i];
 
 		config.dev = pdev->dev.parent;
-		config.driver_data = sreg;
+		config.driver_data = info;
 		config.regmap = pmic->regmap;
 
 		rdev = devm_regulator_register(dev, &info->desc, &config);
