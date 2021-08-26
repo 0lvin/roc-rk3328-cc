@@ -464,62 +464,24 @@ static int rk805_set_suspend_disable(struct regulator_dev *rdev)
 
 static int rk808_set_suspend_enable(struct regulator_dev *rdev)
 {
-	unsigned int reg, enable_val;
-	int offset = 0;
-	struct rk808 *rk818 = rdev->reg_data;
+	unsigned int reg;
 
-	switch (rk818->variant) {
-	case RK818_ID:
-		offset = RK808_SLP_SET_OFF_REG_OFFSET;
-		enable_val = 0;
-		break;
-	case RK805_ID:
-		if (rdev->desc->id >= RK805_ID_LDO1)
-			offset = RK805_SLP_LDO_EN_OFFSET;
-		else
-			offset = RK805_SLP_DCDC_EN_OFFSET;
-		enable_val = rdev->desc->enable_mask;
-		break;
-	default:
-		dev_err(&rdev->dev, "not define sleep en reg offset!!\n");
-		return -EINVAL;
-	}
-
-	reg = rdev->desc->enable_reg + offset;
+	reg = rdev->desc->enable_reg + RK808_SLP_SET_OFF_REG_OFFSET;
 
 	return regmap_update_bits(rdev->regmap, reg,
 				  rdev->desc->enable_mask,
-				  enable_val);
+				  0);
 }
 
 static int rk808_set_suspend_disable(struct regulator_dev *rdev)
 {
-	int offset = 0;
-	unsigned int reg, disable_val;
-	struct rk808 *rk818 = rdev->reg_data;
+	unsigned int reg;
 
-	switch (rk818->variant) {
-	case RK818_ID:
-		offset = RK808_SLP_SET_OFF_REG_OFFSET;
-		disable_val = rdev->desc->enable_mask;
-		break;
-	case RK805_ID:
-		if (rdev->desc->id >= RK805_ID_LDO1)
-			offset = RK805_SLP_LDO_EN_OFFSET;
-		else
-			offset = RK805_SLP_DCDC_EN_OFFSET;
-		disable_val = 0;
-		break;
-	default:
-		dev_err(&rdev->dev, "not define sleep en reg offset!!\n");
-		return -EINVAL;
-	}
-
-	reg = rdev->desc->enable_reg + offset;
+	reg = rdev->desc->enable_reg + RK808_SLP_SET_OFF_REG_OFFSET;
 
 	return regmap_update_bits(rdev->regmap, reg,
 				  rdev->desc->enable_mask,
-				  disable_val);
+				  rdev->desc->enable_mask);
 }
 
 static int rk817_set_suspend_enable_ctrl(struct regulator_dev *rdev,
@@ -696,7 +658,7 @@ static const struct regulator_ops rk808_reg_ops = {
 	.set_suspend_disable	= rk808_set_suspend_disable,
 };
 
-static struct regulator_ops rk808_reg_ops_ranges = {
+static const struct regulator_ops rk808_reg_ops_ranges = {
 	.list_voltage		= regulator_list_voltage_linear_range,
 	.map_voltage		= regulator_map_voltage_linear_range,
 	.get_voltage_sel	= regulator_get_voltage_sel_regmap,
@@ -704,7 +666,7 @@ static struct regulator_ops rk808_reg_ops_ranges = {
 	.enable			= regulator_enable_regmap,
 	.disable		= regulator_disable_regmap,
 	.is_enabled		= regulator_is_enabled_regmap,
-	.set_suspend_voltage	= rk808_set_suspend_voltage,
+	.set_suspend_voltage	= rk808_set_suspend_voltage_range,
 	.set_suspend_enable	= rk808_set_suspend_enable,
 	.set_suspend_disable	= rk808_set_suspend_disable,
 	.set_voltage_time_sel	= regulator_set_voltage_time_sel,
@@ -723,9 +685,9 @@ static const struct regulator_ops rk808_switch_ops = {
 };
 
 static const struct linear_range rk805_buck_1_2_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),	/* 0.7125v - 1.45v */
-	REGULATOR_LINEAR_RANGE(1800000, 60, 62, 200000),/* 1.8v - 2.2v */
-	REGULATOR_LINEAR_RANGE(2300000, 63, 63, 0),	/* 2.3v - 2.3v */
+	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),
+	REGULATOR_LINEAR_RANGE(1800000, 60, 62, 200000),
+	REGULATOR_LINEAR_RANGE(2300000, 63, 63, 0),
 };
 
 static struct regulator_ops rk818_reg_ops = {
