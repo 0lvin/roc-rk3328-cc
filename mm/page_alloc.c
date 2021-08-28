@@ -124,17 +124,6 @@ static DEFINE_MUTEX(pcp_batch_high_lock);
 
 struct pagesets {
 	local_lock_t lock;
-#if defined(CONFIG_DEBUG_INFO_BTF) &&				\
-	!defined(CONFIG_DEBUG_LOCK_ALLOC) &&			\
-	!defined(CONFIG_PAHOLE_HAS_ZEROSIZE_PERCPU_SUPPORT)
-	/*
-	 * pahole 1.21 and earlier gets confused by zero-sized per-CPU
-	 * variables and produces invalid BTF. Ensure that
-	 * sizeof(struct pagesets) != 0 for older versions of pahole.
-	 */
-	char __pahole_hack;
-	#warning "pahole too old to support zero-sized struct pagesets"
-#endif
 };
 static DEFINE_PER_CPU(struct pagesets, pagesets) = {
 	.lock = INIT_LOCAL_LOCK(lock),
@@ -3192,7 +3181,7 @@ static void __drain_all_pages(struct zone *zone, bool force_all_cpus)
 	int cpu;
 
 	/*
-	 * Allocate in the BSS so we wont require allocation in
+	 * Allocate in the BSS so we won't require allocation in
 	 * direct reclaim path for CONFIG_CPUMASK_OFFSTACK=y
 	 */
 	static cpumask_t cpus_with_pcps;
@@ -3831,7 +3820,7 @@ static inline bool __should_fail_alloc_page(gfp_t gfp_mask, unsigned int order)
 
 #endif /* CONFIG_FAIL_PAGE_ALLOC */
 
-noinline bool should_fail_alloc_page(gfp_t gfp_mask, unsigned int order)
+static noinline bool should_fail_alloc_page(gfp_t gfp_mask, unsigned int order)
 {
 	return __should_fail_alloc_page(gfp_mask, order);
 }
