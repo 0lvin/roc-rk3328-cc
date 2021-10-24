@@ -386,30 +386,6 @@ static const struct linear_range rk805_ldo_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4 */
 };
 
-/* rk818 */
-static const struct linear_range rk818_buck_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(712500, 0, 63, 12500),
-};
-
-static const struct linear_range rk818_buck4_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(1800000, 0, 15, 100000),
-};
-
-static const struct linear_range rk818_ldo_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(1800000, 0, 16, 100000),
-};
-
-static const struct linear_range rk818_ldo6_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(800000, 0, 17, 100000),
-};
-
-static const struct linear_range rk818_boost_voltage_ranges[] = {
-	REGULATOR_LINEAR_RANGE(4700000, 0, 7, 100000),
-};
-
-#define RK805_SLP_LDO_EN_OFFSET		-1
-#define RK805_SLP_DCDC_EN_OFFSET	2
-
 static int rk808_set_suspend_voltage(struct regulator_dev *rdev, int uv)
 {
 	unsigned int reg;
@@ -628,6 +604,9 @@ static const struct regulator_ops rk805_switch_ops = {
 	.is_enabled             = regulator_is_enabled_regmap,
 	.set_suspend_enable     = rk805_set_suspend_enable,
 	.set_suspend_disable    = rk805_set_suspend_disable,
+	.set_mode		= rk8xx_set_mode,
+	.get_mode		= rk8xx_get_mode,
+	.set_suspend_mode	= rk8xx_set_suspend_mode,
 };
 
 static const struct regulator_ops rk808_buck1_2_ops = {
@@ -704,17 +683,6 @@ static struct regulator_ops rk818_reg_ops = {
 	.set_suspend_voltage	= rk808_set_suspend_voltage,
 	.set_suspend_enable	= rk808_set_suspend_enable,
 	.set_suspend_disable	= rk808_set_suspend_disable,
-};
-
-static struct regulator_ops rk818_switch_ops = {
-	.enable			= regulator_enable_regmap,
-	.disable		= regulator_disable_regmap,
-	.is_enabled		= regulator_is_enabled_regmap,
-	.set_suspend_enable	= rk808_set_suspend_enable,
-	.set_suspend_disable	= rk808_set_suspend_disable,
-	.set_mode		= rk8xx_set_mode,
-	.get_mode		= rk8xx_get_mode,
-	.set_suspend_mode	= rk8xx_set_suspend_mode,
 };
 
 static const struct regulator_ops rk809_buck5_ops_range = {
@@ -825,7 +793,7 @@ static const struct regulator_desc rk805_reg[] = {
 		.of_match = of_match_ptr("DCDC_REG3"),
 		.regulators_node = of_match_ptr("regulators"),
 		.id = RK805_ID_DCDC3,
-		.ops = &rk818_switch_ops,
+		.ops = &rk805_switch_ops,
 		.type = REGULATOR_VOLTAGE,
 		.n_voltages = 1,
 		.enable_reg = RK805_DCDC_EN_REG,
@@ -1400,7 +1368,6 @@ static const struct regulator_desc rk818_reg[] = {
 	RK8XX_DESC_SWITCH(RK818_ID_OTG_SWITCH, "OTG_SWITCH", "usb",
 		RK818_DCDC_EN_REG, BIT(7)),
 };
-
 
 static struct of_regulator_match rk805_reg_matches[] = {
 	[RK805_ID_DCDC1] = {
