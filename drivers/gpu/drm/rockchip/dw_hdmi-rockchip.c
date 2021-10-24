@@ -15,7 +15,6 @@
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
 #include <linux/clk-provider.h>
-#include <linux/rockchip/cpu.h>
 #include <linux/pm_runtime.h>
 #include <uapi/linux/videodev2.h>
 #include <drm/drm_simple_kms_helper.h>

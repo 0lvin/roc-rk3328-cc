@@ -22,7 +22,6 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/iopoll.h>
-#include <linux/rockchip/cpu.h>
 
 #define UPDATE(x, h, l)		(((x) << (l)) & GENMASK((h), (l)))
 
@@ -493,8 +492,7 @@ static int inno_hdmi_phy_power_on(struct phy *phy)
 	if (!inno->plat_data->ops->power_on)
 		return -EINVAL;
 
-	if (inno->plat_data->dev_type == INNO_HDMI_PHY_RK3328 &&
-	    rockchip_get_cpu_version())
+	if (inno->plat_data->dev_type == INNO_HDMI_PHY_RK3328)
 		chipversion = 2;
 
 	for (; cfg->tmdsclock != ~0UL; cfg++)

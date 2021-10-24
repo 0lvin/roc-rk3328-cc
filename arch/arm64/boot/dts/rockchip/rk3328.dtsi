@@ -174,12 +174,6 @@
 		interrupt-affinity = <&cpu0>, <&cpu1>, <&cpu2>, <&cpu3>;
 	};
 
-	cpuinfo {
-		compatible = "rockchip,cpuinfo";
-		nvmem-cells = <&efuse_id>, <&efuse_cpu_version>;
-		nvmem-cell-names = "id", "cpu-version";
-	};
-
 	display_subsystem: display-subsystem {
 		compatible = "rockchip,display-subsystem";
 		ports = <&vop_out>;
