@@ -505,15 +505,13 @@
 	};
 
 	max98357a: max98357a {
-		#sound-dai-cells = <0>;
-		status = "okay";
-
+		compatible = "maxim,max98357a";
 		pinctrl-names = "default";
 		pinctrl-0 = <&sdmode_en>;
-
-		compatible = "maxim,max98357a";
 		sdmode-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
 		sdmode-delay = <2>;
+		#sound-dai-cells = <0>;
+		status = "okay";
 	};
 
 	sound: sound {
@@ -929,11 +927,10 @@ ap_i2c_audio: &i2c8 {
 	cros_ec: ec@0 {
 		compatible = "google,cros-ec-spi";
 		reg = <0>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&ec_ap_int_l>;
-
 		interrupt-parent = <&gpio0>;
 		interrupts = <1 IRQ_TYPE_LEVEL_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&ec_ap_int_l>;
 		spi-max-frequency = <3000000>;
 
 		i2c_tunnel: i2c-tunnel {
@@ -1309,8 +1306,3 @@ ap_i2c_audio: &i2c8 {
 		};
 	};
 };
-
-/* DON'T PUT ANYTHING BELOW HERE.  PUT IT ABOVE PINCTRL */
-/* DON'T PUT ANYTHING BELOW HERE.  PUT IT ABOVE PINCTRL */
-/* DON'T PUT ANYTHING BELOW HERE.  PUT IT ABOVE PINCTRL */
-
