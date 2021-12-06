@@ -225,33 +225,6 @@
 	mali-supply = <&vdd_logic>;
 };
 
-&gpu_opp_table {
-
-	rockchip,leakage-voltage-sel = <
-		1   8     0
-		9   254   1
-	>;
-	nvmem-cells = <&logic_leakage>;
-	nvmem-cell-names = "gpu_leakage";
-
-	opp-200000000 {
-			opp-hz = /bits/ 64 <200000000>;
-			opp-microvolt = <1050000>;
-	};
-	opp-300000000 {
-			opp-hz = /bits/ 64 <300000000>;
-			opp-microvolt = <1050000>;
-	};
-	opp-400000000 {
-			opp-hz = /bits/ 64 <400000000>;
-			opp-microvolt = <1050000>;
-	};
-	opp-500000000 {
-			opp-hz = /bits/ 64 <500000000>;
-			opp-microvolt = <1125000>;
-	};
-};
-
 &hdmi {
 	#sound-dai-cells = <0>;
 	ddc-i2c-scl-high-time-ns = <9625>;
