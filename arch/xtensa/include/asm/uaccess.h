@@ -35,7 +35,7 @@
 #define get_fs()	(current->thread.current_ds)
 #define set_fs(val)	(current->thread.current_ds = (val))
 
-#define segment_eq(a, b)	((a).seg == (b).seg)
+#define uaccess_kernel() (get_fs().seg == KERNEL_DS.seg)
 
 #define __kernel_ok (uaccess_kernel())
 #define __user_ok(addr, size) \
@@ -290,8 +290,7 @@ clear_user(void __user *addr, unsigned long size)
 #define __clear_user  __xtensa_clear_user
 
 
-#ifndef CONFIG_GENERIC_STRNCPY_FROM_USER
-
+#ifdef CONFIG_ARCH_HAS_STRNCPY_FROM_USER
 extern long __strncpy_user(char *dst, const char __user *src, long count);
 
 static inline long
@@ -302,7 +301,7 @@ strncpy_from_user(char *dst, const char __user *src, long count)
 	return -EFAULT;
 }
 #else
-long strncpy_from_user(char *dst, const char *src, long count);
+long strncpy_from_user(char *dst, const char __user *src, long count);
 #endif
 
 /*

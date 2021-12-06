@@ -52,4 +52,7 @@ bool xen_biovec_phys_mergeable(const struct bio_vec *vec1,
 extern u64 xen_saved_max_mem_size;
 #endif
 
+int xen_alloc_unpopulated_pages(unsigned int nr_pages, struct page **pages);
+void xen_free_unpopulated_pages(unsigned int nr_pages, struct page **pages);
+
 #endif	/* _XEN_XEN_H */

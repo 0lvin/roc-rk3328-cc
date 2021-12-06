@@ -501,6 +501,18 @@ fail_over_mac
 	This option was added in bonding version 3.2.0.  The "follow"
 	policy was added in bonding version 3.3.0.
 
+lacp_active
+	Option specifying whether to send LACPDU frames periodically.
+
+	off or 0
+		LACPDU frames acts as "speak when spoken to".
+
+	on or 1
+		LACPDU frames are sent along the configured links
+		periodically. See lacp_rate for more details.
+
+	The default is on.
+
 lacp_rate
 
 	Option specifying the rate in which we'll ask our link partner
@@ -950,6 +962,19 @@ xmit_hash_policy
 		improve the performance for tunnel users because the
 		packets will be distributed according to the encapsulated
 		flows.
+
+	vlan+srcmac
+
+		This policy uses a very rudimentary vlan ID and source mac
+		hash to load-balance traffic per-vlan, with failover
+		should one leg fail. The intended use case is for a bond
+		shared by multiple virtual machines, all configured to
+		use their own vlan, to give lacp-like functionality
+		without requiring lacp-capable switching hardware.
+
+		The formula for the hash is simply
+
+		hash = (vlan ID) XOR (source MAC vendor) XOR (source MAC dev)
 
 	The default value is layer2.  This option was added in bonding
 	version 2.6.3.  In earlier versions of bonding, this parameter
@@ -1975,7 +2000,7 @@ netif_carrier.
 If use_carrier is 0, then the MII monitor will first query the
 device's (via ioctl) MII registers and check the link state.  If that
 request fails (not just that it returns carrier down), then the MII
-monitor will make an ethtool ETHOOL_GLINK request to attempt to obtain
+monitor will make an ethtool ETHTOOL_GLINK request to attempt to obtain
 the same information.  If both methods fail (i.e., the driver either
 does not support or had some error in processing both the MII register
 and ethtool requests), then the MII monitor will assume the link is
@@ -2860,17 +2885,6 @@ version of the linux kernel, found on http://kernel.org
 The latest version of this document can be found in the latest kernel
 source (named Documentation/networking/bonding.rst).
 
-Discussions regarding the usage of the bonding driver take place on the
-bonding-devel mailing list, hosted at sourceforge.net. If you have questions or
-problems, post them to the list.  The list address is:
-
-bonding-devel@lists.sourceforge.net
-
-The administrative interface (to subscribe or unsubscribe) can
-be found at:
-
-https://lists.sourceforge.net/lists/listinfo/bonding-devel
-
 Discussions regarding the development of the bonding driver take place
 on the main Linux network mailing list, hosted at vger.kernel.org. The list
 address is:
@@ -2881,10 +2895,3 @@ The administrative interface (to subscribe or unsubscribe) can
 be found at:
 
 http://vger.kernel.org/vger-lists.html#netdev
-
-Donald Becker's Ethernet Drivers and diag programs may be found at :
-
- - http://web.archive.org/web/%2E/http://www.scyld.com/network/
-
-You will also find a lot of information regarding Ethernet, NWay, MII,
-etc. at www.scyld.com.

@@ -717,8 +717,8 @@ static int max77686_init_rtc_regmap(struct max77686_rtc_info *info)
 
 add_rtc_irq:
 	ret = regmap_add_irq_chip(info->rtc_regmap, info->rtc_irq,
-				  IRQF_TRIGGER_FALLING | IRQF_ONESHOT |
-				  IRQF_SHARED, 0, info->drv_data->rtc_irq_chip,
+				  IRQF_ONESHOT | IRQF_SHARED,
+				  0, info->drv_data->rtc_irq_chip,
 				  &info->rtc_irq_data);
 	if (ret < 0) {
 		dev_err(info->dev, "Failed to add RTC irq chip: %d\n", ret);
@@ -805,17 +805,36 @@ static int max77686_rtc_remove(struct platform_device *pdev)
 #ifdef CONFIG_PM_SLEEP
 static int max77686_rtc_suspend(struct device *dev)
 {
+	struct max77686_rtc_info *info = dev_get_drvdata(dev);
+	int ret = 0;
+
 	if (device_may_wakeup(dev)) {
 		struct max77686_rtc_info *info = dev_get_drvdata(dev);
 
-		return enable_irq_wake(info->virq);
+		ret = enable_irq_wake(info->virq);
 	}
 
-	return 0;
+	/*
+	 * If the main IRQ (not virtual) is the parent IRQ, then it must be
+	 * disabled during suspend because if it happens while suspended it
+	 * will be handled before resuming I2C.
+	 *
+	 * Since Main IRQ is shared, all its users should disable it to be sure
+	 * it won't fire while one of them is still suspended.
+	 */
+	if (!info->drv_data->rtc_irq_from_platform)
+		disable_irq(info->rtc_irq);
+
+	return ret;
 }
 
 static int max77686_rtc_resume(struct device *dev)
 {
+	struct max77686_rtc_info *info = dev_get_drvdata(dev);
+
+	if (!info->drv_data->rtc_irq_from_platform)
+		enable_irq(info->rtc_irq);
+
 	if (device_may_wakeup(dev)) {
 		struct max77686_rtc_info *info = dev_get_drvdata(dev);
 

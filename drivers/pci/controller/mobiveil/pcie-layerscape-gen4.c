@@ -42,17 +42,6 @@ struct ls_pcie_g4 {
 	int irq;
 };
 
-static inline u32 ls_pcie_g4_lut_readl(struct ls_pcie_g4 *pcie, u32 off)
-{
-	return ioread32(pcie->pci.csr_axi_slave_base + PCIE_LUT_OFF + off);
-}
-
-static inline void ls_pcie_g4_lut_writel(struct ls_pcie_g4 *pcie,
-					 u32 off, u32 val)
-{
-	iowrite32(val, pcie->pci.csr_axi_slave_base + PCIE_LUT_OFF + off);
-}
-
 static inline u32 ls_pcie_g4_pf_readl(struct ls_pcie_g4 *pcie, u32 off)
 {
 	return ioread32(pcie->pci.csr_axi_slave_base + PCIE_PF_OFF + off);
@@ -170,10 +159,9 @@ static int ls_pcie_g4_interrupt_init(struct mobiveil_pcie *mv_pci)
 	int ret;
 
 	pcie->irq = platform_get_irq_byname(pdev, "intr");
-	if (pcie->irq < 0) {
-		dev_err(dev, "Can't get 'intr' IRQ, errno = %d\n", pcie->irq);
+	if (pcie->irq < 0)
 		return pcie->irq;
-	}
+
 	ret = devm_request_irq(dev, pcie->irq, ls_pcie_g4_isr,
 			       IRQF_SHARED, pdev->name, pcie);
 	if (ret) {

@@ -68,7 +68,6 @@ struct hash_table_bucket;
 
 struct clone {
 	struct dm_target *ti;
-	struct dm_target_callbacks callbacks;
 
 	struct dm_dev *metadata_dev;
 	struct dm_dev *dest_dev;
@@ -85,12 +84,6 @@ struct clone {
 	struct mutex commit_lock;
 
 	struct dm_clone_metadata *cmd;
-
-	/*
-	 * bio used to flush the destination device, before committing the
-	 * metadata.
-	 */
-	struct bio flush_bio;
 
 	/* Region hydration hash table */
 	struct hash_table_bucket *ht;
@@ -168,7 +161,7 @@ static const char *clone_device_name(struct clone *clone)
 
 static void __set_clone_mode(struct clone *clone, enum clone_metadata_mode new_mode)
 {
-	const char *descs[] = {
+	static const char * const descs[] = {
 		"read-write",
 		"read-only",
 		"fail"
@@ -330,7 +323,7 @@ static void submit_bios(struct bio_list *bios)
 	blk_start_plug(&plug);
 
 	while ((bio = bio_list_pop(bios)))
-		generic_make_request(bio);
+		submit_bio_noacct(bio);
 
 	blk_finish_plug(&plug);
 }
@@ -346,7 +339,7 @@ static void submit_bios(struct bio_list *bios)
 static void issue_bio(struct clone *clone, struct bio *bio)
 {
 	if (!bio_triggers_commit(clone, bio)) {
-		generic_make_request(bio);
+		submit_bio_noacct(bio);
 		return;
 	}
 
@@ -473,7 +466,7 @@ static void complete_discard_bio(struct clone *clone, struct bio *bio, bool succ
 		bio_region_range(clone, bio, &rs, &nr_regions);
 		trim_bio(bio, region_to_sector(clone, rs),
 			 nr_regions << clone->region_shift);
-		generic_make_request(bio);
+		submit_bio_noacct(bio);
 	} else
 		bio_endio(bio);
 }
@@ -865,7 +858,7 @@ static void hydration_overwrite(struct dm_clone_region_hydration *hd, struct bio
 	bio->bi_private = hd;
 
 	atomic_inc(&hd->clone->hydrations_in_flight);
-	generic_make_request(bio);
+	submit_bio_noacct(bio);
 }
 
 /*
@@ -1156,11 +1149,7 @@ static int commit_metadata(struct clone *clone, bool *dest_dev_flushed)
 		goto out;
 	}
 
-	bio_reset(&clone->flush_bio);
-	bio_set_dev(&clone->flush_bio, clone->dest_dev->bdev);
-	clone->flush_bio.bi_opf = REQ_OP_WRITE | REQ_PREFLUSH;
-
-	r = submit_bio_wait(&clone->flush_bio);
+	r = blkdev_issue_flush(clone->dest_dev->bdev);
 	if (unlikely(r)) {
 		__metadata_operation_failed(clone, "flush destination device", r);
 		goto out;
@@ -1281,7 +1270,7 @@ static void process_deferred_flush_bios(struct clone *clone)
 			 */
 			bio_endio(bio);
 		} else {
-			generic_make_request(bio);
+			submit_bio_noacct(bio);
 		}
 	}
 }
@@ -1510,6 +1499,11 @@ static void clone_status(struct dm_target *ti, status_type_t type,
 
 		for (i = 0; i < clone->nr_ctr_args; i++)
 			DMEMIT(" %s", clone->ctr_args[i]);
+		break;
+
+	case STATUSTYPE_IMA:
+		*result = '\0';
+		break;
 	}
 
 	return;
@@ -1518,21 +1512,9 @@ error:
 	DMEMIT("Error");
 }
 
-static int clone_is_congested(struct dm_target_callbacks *cb, int bdi_bits)
-{
-	struct request_queue *dest_q, *source_q;
-	struct clone *clone = container_of(cb, struct clone, callbacks);
-
-	source_q = bdev_get_queue(clone->source_dev->bdev);
-	dest_q = bdev_get_queue(clone->dest_dev->bdev);
-
-	return (bdi_congested(dest_q->backing_dev_info, bdi_bits) |
-		bdi_congested(source_q->backing_dev_info, bdi_bits));
-}
-
 static sector_t get_dev_size(struct dm_dev *dev)
 {
-	return i_size_read(dev->bdev->bd_inode) >> SECTOR_SHIFT;
+	return bdev_nr_sectors(dev->bdev);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1899,7 +1881,6 @@ static int clone_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	bio_list_init(&clone->deferred_flush_completions);
 	clone->hydration_offset = 0;
 	atomic_set(&clone->hydrations_in_flight, 0);
-	bio_init(&clone->flush_bio, NULL, 0);
 
 	clone->wq = alloc_workqueue("dm-" DM_MSG_PREFIX, WQ_MEM_RECLAIM, 0);
 	if (!clone->wq) {
@@ -1930,8 +1911,6 @@ static int clone_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		goto out_with_mempool;
 
 	mutex_init(&clone->commit_lock);
-	clone->callbacks.congested_fn = clone_is_congested;
-	dm_table_add_target_callbacks(ti->table, &clone->callbacks);
 
 	/* Enable flushes */
 	ti->num_flush_bios = 1;
@@ -1973,7 +1952,6 @@ static void clone_dtr(struct dm_target *ti)
 	struct clone *clone = ti->private;
 
 	mutex_destroy(&clone->commit_lock);
-	bio_uninit(&clone->flush_bio);
 
 	for (i = 0; i < clone->nr_ctr_args; i++)
 		kfree(clone->ctr_args[i]);

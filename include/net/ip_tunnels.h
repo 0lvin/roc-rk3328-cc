@@ -270,12 +270,11 @@ void ip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev,
 void ip_md_tunnel_xmit(struct sk_buff *skb, struct net_device *dev,
 		       const u8 proto, int tunnel_hlen);
 int ip_tunnel_ctl(struct net_device *dev, struct ip_tunnel_parm *p, int cmd);
-int ip_tunnel_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd);
+int ip_tunnel_siocdevprivate(struct net_device *dev, struct ifreq *ifr,
+			     void __user *data, int cmd);
 int __ip_tunnel_change_mtu(struct net_device *dev, int new_mtu, bool strict);
 int ip_tunnel_change_mtu(struct net_device *dev, int new_mtu);
 
-void ip_tunnel_get_stats64(struct net_device *dev,
-			   struct rtnl_link_stats64 *tot);
 struct ip_tunnel *ip_tunnel_lookup(struct ip_tunnel_net *itn,
 				   int link, __be16 flags,
 				   __be32 remote, __be32 local,
@@ -420,6 +419,8 @@ void iptunnel_xmit(struct sock *sk, struct rtable *rt, struct sk_buff *skb,
 		   u8 tos, u8 ttl, __be16 df, bool xnet);
 struct metadata_dst *iptunnel_metadata_reply(struct metadata_dst *md,
 					     gfp_t flags);
+int skb_tunnel_check_pmtu(struct sk_buff *skb, struct dst_entry *encap_dst,
+			  int headroom, bool reply);
 
 int iptunnel_handle_offloads(struct sk_buff *skb, int gso_type_mask);
 
@@ -476,9 +477,11 @@ static inline void ip_tunnel_info_opts_set(struct ip_tunnel_info *info,
 					   const void *from, int len,
 					   __be16 flags)
 {
-	memcpy(ip_tunnel_info_opts(info), from, len);
 	info->options_len = len;
-	info->key.tun_flags |= flags;
+	if (len > 0) {
+		memcpy(ip_tunnel_info_opts(info), from, len);
+		info->key.tun_flags |= flags;
+	}
 }
 
 static inline struct ip_tunnel_info *lwt_tun_info(struct lwtunnel_state *lwtstate)
@@ -524,7 +527,6 @@ static inline void ip_tunnel_info_opts_set(struct ip_tunnel_info *info,
 					   __be16 flags)
 {
 	info->options_len = 0;
-	info->key.tun_flags |= flags;
 }
 
 #endif /* CONFIG_INET */

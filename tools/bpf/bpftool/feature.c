@@ -336,6 +336,10 @@ static void probe_kernel_image_config(const char *define_prefix)
 		{ "CONFIG_BPF_JIT", },
 		/* Avoid compiling eBPF interpreter (use JIT only) */
 		{ "CONFIG_BPF_JIT_ALWAYS_ON", },
+		/* Kernel BTF debug information available */
+		{ "CONFIG_DEBUG_INFO_BTF", },
+		/* Kernel module BTF debug information available */
+		{ "CONFIG_DEBUG_INFO_BTF_MODULES", },
 
 		/* cgroups */
 		{ "CONFIG_CGROUPS", },
@@ -504,6 +508,10 @@ probe_prog_type(enum bpf_prog_type prog_type, bool *supported_types,
 
 	supported_types[prog_type] |= res;
 
+	if (!prog_type_name[prog_type]) {
+		p_info("program type name not found (type %d)", prog_type);
+		return;
+	}
 	maxlen = sizeof(plain_desc) - strlen(plain_comment) - 1;
 	if (strlen(prog_type_name[prog_type]) > maxlen) {
 		p_info("program type name too long");
@@ -533,6 +541,10 @@ probe_map_type(enum bpf_map_type map_type, const char *define_prefix,
 	 * check required for unprivileged users
 	 */
 
+	if (!map_type_name[map_type]) {
+		p_info("map type name not found (type %d)", map_type);
+		return;
+	}
 	maxlen = sizeof(plain_desc) - strlen(plain_comment) - 1;
 	if (strlen(map_type_name[map_type]) > maxlen) {
 		p_info("map type name too long");
@@ -612,6 +624,7 @@ probe_helpers_for_progtype(enum bpf_prog_type prog_type, bool supported_type,
 		 */
 		switch (id) {
 		case BPF_FUNC_trace_printk:
+		case BPF_FUNC_trace_vprintk:
 		case BPF_FUNC_probe_write_user:
 			if (!full_mode)
 				continue;
@@ -695,7 +708,7 @@ section_program_types(bool *supported_types, const char *define_prefix,
 			    "/*** eBPF program types ***/",
 			    define_prefix);
 
-	for (i = BPF_PROG_TYPE_UNSPEC + 1; i < ARRAY_SIZE(prog_type_name); i++)
+	for (i = BPF_PROG_TYPE_UNSPEC + 1; i < prog_type_name_size; i++)
 		probe_prog_type(i, supported_types, define_prefix, ifindex);
 
 	print_end_section();
@@ -741,7 +754,7 @@ section_helpers(bool *supported_types, const char *define_prefix, __u32 ifindex)
 		       "	%sBPF__PROG_TYPE_ ## prog_type ## __HELPER_ ## helper\n",
 		       define_prefix, define_prefix, define_prefix,
 		       define_prefix);
-	for (i = BPF_PROG_TYPE_UNSPEC + 1; i < ARRAY_SIZE(prog_type_name); i++)
+	for (i = BPF_PROG_TYPE_UNSPEC + 1; i < prog_type_name_size; i++)
 		probe_helpers_for_progtype(i, supported_types[i], define_prefix,
 					   ifindex);
 
@@ -835,9 +848,14 @@ static int handle_perms(void)
 		else
 			p_err("missing %s%s%s%s%s%s%s%srequired for full feature probing; run as root or use 'unprivileged'",
 			      capability_msg(bpf_caps, 0),
+#ifdef CAP_BPF
 			      capability_msg(bpf_caps, 1),
 			      capability_msg(bpf_caps, 2),
-			      capability_msg(bpf_caps, 3));
+			      capability_msg(bpf_caps, 3)
+#else
+				"", "", "", "", "", ""
+#endif /* CAP_BPF */
+				);
 		goto exit_free;
 	}
 
@@ -988,6 +1006,7 @@ static int do_help(int argc, char **argv)
 		"       %1$s %2$s help\n"
 		"\n"
 		"       COMPONENT := { kernel | dev NAME }\n"
+		"       " HELP_SPEC_OPTIONS " }\n"
 		"",
 		bin_name, argv[-2]);
 

@@ -6,7 +6,6 @@ config IMA
 	select SECURITYFS
 	select CRYPTO
 	select CRYPTO_HMAC
-	select CRYPTO_MD5
 	select CRYPTO_SHA1
 	select CRYPTO_HASH_INFO
 	select TCG_TPM if HAS_IOMEM && !UML
@@ -26,7 +25,7 @@ config IMA
 	  an aggregate integrity value over this list inside the
 	  TPM hardware, so that the TPM can prove to a third party
 	  whether or not critical system files have been modified.
-	  Read <http://www.usenix.org/events/sec04/tech/sailer.html>
+	  Read <https://www.usenix.org/events/sec04/tech/sailer.html>
 	  to learn more about IMA.
 	  If unsure, say N.
 
@@ -54,7 +53,7 @@ config IMA_MEASURE_PCR_IDX
 
 config IMA_LSM_RULES
 	bool
-	depends on IMA && AUDIT && (SECURITY_SELINUX || SECURITY_SMACK)
+	depends on IMA && AUDIT && (SECURITY_SELINUX || SECURITY_SMACK || SECURITY_APPARMOR)
 	default y
 	help
 	  Disabling this option will disregard LSM based policy rules.
@@ -232,7 +231,7 @@ config IMA_APPRAISE_REQUIRE_POLICY_SIGS
 
 config IMA_APPRAISE_BOOTPARAM
 	bool "ima_appraise boot parameter"
-	depends on IMA_APPRAISE && !IMA_ARCH_POLICY
+	depends on IMA_APPRAISE
 	default y
 	help
 	  This option enables the different "ima_appraise=" modes
@@ -334,3 +333,10 @@ config IMA_SECURE_AND_OR_TRUSTED_BOOT
        help
           This option is selected by architectures to enable secure and/or
           trusted boot based on IMA runtime policies.
+
+config IMA_DISABLE_HTABLE
+	bool "Disable htable to allow measurement of duplicate records"
+	depends on IMA
+	default n
+	help
+	   This option disables htable to allow measurement of duplicate records.

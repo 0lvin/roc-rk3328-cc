@@ -5,6 +5,7 @@
 
 /* ETHTOOL Support for VNIC_VF Device*/
 
+#include <linux/ethtool.h>
 #include <linux/pci.h>
 #include <linux/net_tstamp.h>
 
@@ -455,7 +456,9 @@ static void nicvf_get_regs(struct net_device *dev,
 }
 
 static int nicvf_get_coalesce(struct net_device *netdev,
-			      struct ethtool_coalesce *cmd)
+			      struct ethtool_coalesce *cmd,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
 {
 	struct nicvf *nic = netdev_priv(netdev);
 
@@ -522,7 +525,7 @@ static int nicvf_get_rss_hash_opts(struct nicvf *nic,
 	case SCTP_V4_FLOW:
 	case SCTP_V6_FLOW:
 		info->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
-		/* Fall through */
+		fallthrough;
 	case IPV4_FLOW:
 	case IPV6_FLOW:
 		info->data |= RXH_IP_SRC | RXH_IP_DST;

@@ -2,7 +2,7 @@
 /*
  * ALSA SoC TLV320AIC31xx CODEC Driver
  *
- * Copyright (C) 2014-2017 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2014-2017 Texas Instruments Incorporated - https://www.ti.com/
  *	Jyri Sarha <jsarha@ti.com>
  *
  * Based on ground work by: Ajit Kulkarni <x0175765@ti.com>
@@ -34,6 +34,9 @@
 #include <dt-bindings/sound/tlv320aic31xx-micbias.h>
 
 #include "tlv320aic31xx.h"
+
+static int aic31xx_set_jack(struct snd_soc_component *component,
+                            struct snd_soc_jack *jack, void *data);
 
 static const struct reg_default aic31xx_reg_defaults[] = {
 	{ AIC31XX_CLKMUX, 0x00 },
@@ -877,7 +880,7 @@ static int aic31xx_setup_pll(struct snd_soc_component *component,
 		   there may be trouble. To fix the issue edit the
 		   aic31xx_divs table for your mclk and sample
 		   rate. Details can be found from:
-		   http://www.ti.com/lit/ds/symlink/tlv320aic3100.pdf
+		   https://www.ti.com/lit/ds/symlink/tlv320aic3100.pdf
 		   Section: 5.6 CLOCK Generation and PLL
 		*/
 	}
@@ -972,7 +975,8 @@ static int aic31xx_hw_params(struct snd_pcm_substream *substream,
 	return aic31xx_setup_pll(component, params);
 }
 
-static int aic31xx_dac_mute(struct snd_soc_dai *codec_dai, int mute)
+static int aic31xx_dac_mute(struct snd_soc_dai *codec_dai, int mute,
+			    int direction)
 {
 	struct snd_soc_component *component = codec_dai->component;
 
@@ -1080,7 +1084,8 @@ static int aic31xx_set_dai_fmt(struct snd_soc_dai *codec_dai,
 	case SND_SOC_DAIFMT_I2S:
 		break;
 	case SND_SOC_DAIFMT_DSP_A:
-		dsp_a_val = 0x1; /* fall through */
+		dsp_a_val = 0x1;
+		fallthrough;
 	case SND_SOC_DAIFMT_DSP_B:
 		/*
 		 * NOTE: This CODEC samples on the falling edge of BCLK in
@@ -1254,6 +1259,13 @@ static int aic31xx_power_on(struct snd_soc_component *component)
 		return ret;
 	}
 
+	/*
+	 * The jack detection configuration is in the same register
+	 * that is used to report jack detect status so is volatile
+	 * and not covered by the cache sync, restore it separately.
+	 */
+	aic31xx_set_jack(component, aic31xx->jack, NULL);
+
 	return 0;
 }
 
@@ -1378,7 +1390,8 @@ static const struct snd_soc_dai_ops aic31xx_dai_ops = {
 	.hw_params	= aic31xx_hw_params,
 	.set_sysclk	= aic31xx_set_dai_sysclk,
 	.set_fmt	= aic31xx_set_dai_fmt,
-	.digital_mute	= aic31xx_dac_mute,
+	.mute_stream	= aic31xx_dac_mute,
+	.no_capture_mute = 1,
 };
 
 static struct snd_soc_dai_driver dac31xx_dai_driver[] = {
@@ -1392,7 +1405,7 @@ static struct snd_soc_dai_driver dac31xx_dai_driver[] = {
 			.formats	 = AIC31XX_FORMATS,
 		},
 		.ops = &aic31xx_dai_ops,
-		.symmetric_rates = 1,
+		.symmetric_rate = 1,
 	}
 };
 
@@ -1414,7 +1427,7 @@ static struct snd_soc_dai_driver aic31xx_dai_driver[] = {
 			.formats	 = AIC31XX_FORMATS,
 		},
 		.ops = &aic31xx_dai_ops,
-		.symmetric_rates = 1,
+		.symmetric_rate = 1,
 	}
 };
 
@@ -1601,6 +1614,8 @@ static int aic31xx_i2c_probe(struct i2c_client *i2c,
 			ret);
 		return ret;
 	}
+	regcache_cache_only(aic31xx->regmap, true);
+
 	aic31xx->dev = &i2c->dev;
 	aic31xx->irq = i2c->irq;
 

@@ -131,7 +131,7 @@ static int hfsplus_get_last_session(struct super_block *sb,
 
 	/* default values */
 	*start = 0;
-	*size = i_size_read(sb->s_bdev->bd_inode) >> 9;
+	*size = bdev_nr_sectors(sb->s_bdev);
 
 	if (HFSPLUS_SB(sb)->session >= 0) {
 		struct cdrom_tocentry te;
@@ -195,7 +195,7 @@ reread:
 	switch (sbi->s_vhdr->signature) {
 	case cpu_to_be16(HFSPLUS_VOLHEAD_SIGX):
 		set_bit(HFSPLUS_SB_HFSX, &sbi->flags);
-		/*FALLTHRU*/
+		fallthrough;
 	case cpu_to_be16(HFSPLUS_VOLHEAD_SIG):
 		break;
 	case cpu_to_be16(HFSP_WRAP_MAGIC):

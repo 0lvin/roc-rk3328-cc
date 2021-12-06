@@ -5,6 +5,7 @@
 #include <linux/iio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/of.h>
@@ -133,14 +134,14 @@ static const char * const sc27xx_charger_supply_name[] = {
 	"sc2723_charger",
 };
 
-static int sc27xx_fgu_adc_to_current(struct sc27xx_fgu_data *data, int adc)
+static int sc27xx_fgu_adc_to_current(struct sc27xx_fgu_data *data, s64 adc)
 {
-	return DIV_ROUND_CLOSEST(adc * 1000, data->cur_1000ma_adc);
+	return DIV_S64_ROUND_CLOSEST(adc * 1000, data->cur_1000ma_adc);
 }
 
-static int sc27xx_fgu_adc_to_voltage(struct sc27xx_fgu_data *data, int adc)
+static int sc27xx_fgu_adc_to_voltage(struct sc27xx_fgu_data *data, s64 adc)
 {
-	return DIV_ROUND_CLOSEST(adc * 1000, data->vol_1000mv_adc);
+	return DIV_S64_ROUND_CLOSEST(adc * 1000, data->vol_1000mv_adc);
 }
 
 static int sc27xx_fgu_voltage_to_adc(struct sc27xx_fgu_data *data, int vol)
@@ -1228,10 +1229,8 @@ static int sc27xx_fgu_probe(struct platform_device *pdev)
 	}
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(dev, "no irq resource specified\n");
+	if (irq < 0)
 		return irq;
-	}
 
 	ret = devm_request_threaded_irq(data->dev, irq, NULL,
 					sc27xx_fgu_interrupt,
@@ -1341,6 +1340,7 @@ static const struct of_device_id sc27xx_fgu_of_match[] = {
 	{ .compatible = "sprd,sc2731-fgu", },
 	{ }
 };
+MODULE_DEVICE_TABLE(of, sc27xx_fgu_of_match);
 
 static struct platform_driver sc27xx_fgu_driver = {
 	.probe = sc27xx_fgu_probe,

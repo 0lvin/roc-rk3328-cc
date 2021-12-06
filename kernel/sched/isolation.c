@@ -81,11 +81,9 @@ static int __init housekeeping_setup(char *str, enum hk_flags flags)
 {
 	cpumask_var_t non_housekeeping_mask;
 	cpumask_var_t tmp;
-	int err;
 
 	alloc_bootmem_cpumask_var(&non_housekeeping_mask);
-	err = cpulist_parse(str, non_housekeeping_mask);
-	if (err < 0 || cpumask_last(non_housekeeping_mask) >= nr_cpu_ids) {
+	if (cpulist_parse(str, non_housekeeping_mask) < 0) {
 		pr_warn("Housekeeping: nohz_full= or isolcpus= incorrect CPU range\n");
 		free_bootmem_cpumask_var(non_housekeeping_mask);
 		return 0;
@@ -140,7 +138,8 @@ static int __init housekeeping_nohz_full_setup(char *str)
 {
 	unsigned int flags;
 
-	flags = HK_FLAG_TICK | HK_FLAG_WQ | HK_FLAG_TIMER | HK_FLAG_RCU | HK_FLAG_MISC;
+	flags = HK_FLAG_TICK | HK_FLAG_WQ | HK_FLAG_TIMER | HK_FLAG_RCU |
+		HK_FLAG_MISC | HK_FLAG_KTHREAD;
 
 	return housekeeping_setup(str, flags);
 }

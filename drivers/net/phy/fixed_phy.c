@@ -161,8 +161,8 @@ static int fixed_phy_add_gpiod(unsigned int irq, int phy_addr,
 }
 
 int fixed_phy_add(unsigned int irq, int phy_addr,
-		  struct fixed_phy_status *status) {
-
+		  struct fixed_phy_status *status)
+{
 	return fixed_phy_add_gpiod(irq, phy_addr, status, NULL);
 }
 EXPORT_SYMBOL_GPL(fixed_phy_add);
@@ -279,13 +279,13 @@ static struct phy_device *__fixed_phy_register(unsigned int irq,
 				 phy->supported);
 		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
 				 phy->supported);
-		/* fall through */
+		fallthrough;
 	case SPEED_100:
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT,
 				 phy->supported);
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
 				 phy->supported);
-		/* fall through */
+		fallthrough;
 	case SPEED_10:
 	default:
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT,

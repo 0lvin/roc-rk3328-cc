@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Common private data for Silicon Labs WFx chips.
+ * Common private data.
  *
- * Copyright (c) 2017-2019, Silicon Laboratories, Inc.
+ * Copyright (c) 2017-2020, Silicon Laboratories, Inc.
  * Copyright (c) 2010, ST-Ericsson
  * Copyright (c) 2006, Michael Wu <flamingice@sourmilk.net>
  * Copyright 2004-2006 Jean-Baptiste Note <jbnote@gmail.com>, et al.
@@ -20,10 +20,9 @@
 #include "data_tx.h"
 #include "main.h"
 #include "queue.h"
-#include "secure_link.h"
 #include "hif_tx.h"
 
-#define USEC_PER_TXOP 32 // see struct ieee80211_tx_queue_params
+#define USEC_PER_TXOP 32 /* see struct ieee80211_tx_queue_params */
 #define USEC_PER_TU 1024
 
 struct hwbus_ops;
@@ -41,14 +40,12 @@ struct wfx_dev {
 	struct completion	firmware_ready;
 	struct hif_ind_startup	hw_caps;
 	struct wfx_hif		hif;
-	struct sl_context	sl;
 	struct delayed_work	cooling_timeout_work;
 	bool			poll_irq;
 	bool			chip_frozen;
 	struct mutex		conf_mutex;
 
 	struct wfx_hif_cmd	hif_cmd;
-	struct wfx_queue	tx_queue[4];
 	struct sk_buff_head	tx_pending;
 	wait_queue_head_t	tx_dequeue;
 	atomic_t		tx_lock;
@@ -60,6 +57,7 @@ struct wfx_dev {
 	struct mutex		rx_stats_lock;
 	struct hif_tx_power_loop_info tx_power_loop_info;
 	struct mutex		tx_power_loop_info_lock;
+	int			force_ps_timeout;
 };
 
 struct wfx_vif {
@@ -75,13 +73,11 @@ struct wfx_vif {
 
 	struct delayed_work	beacon_loss_work;
 
+	struct wfx_queue	tx_queue[4];
 	struct tx_policy_cache	tx_policy_cache;
 	struct work_struct	tx_policy_upload_work;
 
 	struct work_struct	update_tim_work;
-
-	int			filter_mcast_count;
-	u8			filter_mcast_addr[8][ETH_ALEN];
 
 	unsigned long		uapsd_mask;
 
@@ -89,11 +85,10 @@ struct wfx_vif {
 	struct mutex		scan_lock;
 	struct work_struct	scan_work;
 	struct completion	scan_complete;
+	int			scan_nb_chan_done;
 	bool			scan_abort;
 	struct ieee80211_scan_request *scan_req;
 
-	bool			bss_not_support_ps_poll;
-	struct work_struct	update_pm_work;
 	struct completion	set_pm_mode_complete;
 };
 
@@ -104,12 +99,9 @@ static inline struct wfx_vif *wdev_to_wvif(struct wfx_dev *wdev, int vif_id)
 		return NULL;
 	}
 	vif_id = array_index_nospec(vif_id, ARRAY_SIZE(wdev->vif));
-	if (!wdev->vif[vif_id]) {
-		dev_dbg(wdev->dev, "requesting non-allocated vif: %d\n",
-			vif_id);
+	if (!wdev->vif[vif_id])
 		return NULL;
-	}
-	return (struct wfx_vif *) wdev->vif[vif_id]->drv_priv;
+	return (struct wfx_vif *)wdev->vif[vif_id]->drv_priv;
 }
 
 static inline struct wfx_vif *wvif_iterate(struct wfx_dev *wdev,
@@ -169,4 +161,4 @@ static inline int memzcmp(void *src, unsigned int size)
 	return memcmp(buf, buf + 1, size - 1);
 }
 
-#endif /* WFX_H */
+#endif

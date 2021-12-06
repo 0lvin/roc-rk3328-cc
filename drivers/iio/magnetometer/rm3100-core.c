@@ -78,7 +78,8 @@ struct rm3100_data {
 	bool use_interrupt;
 	int conversion_time;
 	int scale;
-	u8 buffer[RM3100_SCAN_BYTES];
+	/* Ensure naturally aligned timestamp */
+	u8 buffer[RM3100_SCAN_BYTES] __aligned(8);
 	struct iio_trigger *drdy_trig;
 
 	/*
@@ -463,8 +464,6 @@ static int rm3100_buffer_postdisable(struct iio_dev *indio_dev)
 
 static const struct iio_buffer_setup_ops rm3100_buffer_ops = {
 	.preenable = rm3100_buffer_preenable,
-	.postenable = iio_triggered_buffer_postenable,
-	.predisable = iio_triggered_buffer_predisable,
 	.postdisable = rm3100_buffer_postdisable,
 };
 
@@ -549,7 +548,6 @@ int rm3100_common_probe(struct device *dev, struct regmap *regmap, int irq)
 
 	mutex_init(&data->lock);
 
-	indio_dev->dev.parent = dev;
 	indio_dev->name = "rm3100";
 	indio_dev->info = &rm3100_info;
 	indio_dev->channels = rm3100_channels;
@@ -578,11 +576,10 @@ int rm3100_common_probe(struct device *dev, struct regmap *regmap, int irq)
 
 		data->drdy_trig = devm_iio_trigger_alloc(dev, "%s-drdy%d",
 							 indio_dev->name,
-							 indio_dev->id);
+							 iio_device_id(indio_dev));
 		if (!data->drdy_trig)
 			return -ENOMEM;
 
-		data->drdy_trig->dev.parent = dev;
 		ret = devm_iio_trigger_register(dev, data->drdy_trig);
 		if (ret < 0)
 			return ret;

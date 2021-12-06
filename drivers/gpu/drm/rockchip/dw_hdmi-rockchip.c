@@ -15,7 +15,6 @@
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
 #include <linux/clk-provider.h>
-#include <linux/rockchip/cpu.h>
 #include <linux/pm_runtime.h>
 #include <uapi/linux/videodev2.h>
 #include <drm/drm_simple_kms_helper.h>
@@ -80,8 +79,6 @@ struct rockchip_hdmi {
 	struct phy *phy;
 	struct clk *hclk_vio;
 	struct clk *dclk;
-
-	unsigned int phy_bus_width;
 };
 
 #define to_rockchip_hdmi(x)	container_of(x, struct rockchip_hdmi, x)
@@ -158,6 +155,18 @@ static const struct dw_hdmi_mpll_config rockchip_mpll_cfg[] = {
 			{ 0x4064, 0x0003}
 		},
 	}, {
+		297000000, {
+			{ 0x0040, 0x0003 },
+			{ 0x214c, 0x0003 },
+			{ 0x5a64, 0x0003 },
+		},
+	}, {
+		594000000, {
+			{ 0x1a40, 0x0003 },
+			{ 0x3b4c, 0x0003 },
+			{ 0x5a64, 0x0003 },
+		},
+	}, {
 		~0UL, {
 			{ 0x00a0, 0x000a },
 			{ 0x2001, 0x000f },
@@ -182,6 +191,10 @@ static const struct dw_hdmi_curr_ctrl rockchip_cur_ctr[] = {
 		146250000, { 0x0038, 0x0038, 0x0038 },
 	}, {
 		148500000, { 0x0000, 0x0038, 0x0038 },
+	}, { // fix it
+		297000000, { 0x0019, 0x001b, 0x0019 },
+	}, { // fix it
+		594000000, { 0x003f, 0x001b, 0x001b },
 	}, {
 		~0UL,      { 0x0000, 0x0000, 0x0000},
 	}
@@ -213,7 +226,7 @@ static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
 	} else if (PTR_ERR(hdmi->vpll_clk) == -EPROBE_DEFER) {
 		return -EPROBE_DEFER;
 	} else if (IS_ERR(hdmi->vpll_clk)) {
-		DRM_DEV_ERROR(hdmi->dev, "failed to get grf clock\n");
+		DRM_DEV_ERROR(hdmi->dev, "failed to get vpll clock\n");
 		return PTR_ERR(hdmi->vpll_clk);
 	}
 
@@ -258,74 +271,23 @@ static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
 }
 
 static enum drm_mode_status
-dw_hdmi_rockchip_mode_valid(struct drm_connector *connector,
+dw_hdmi_rockchip_mode_valid(struct dw_hdmi *hdmi, void *data,
+			    const struct drm_display_info *info,
 			    const struct drm_display_mode *mode)
 {
-	struct drm_encoder *encoder = connector->encoder;
-	enum drm_mode_status status = MODE_OK;
-	struct drm_device *dev = connector->dev;
-	struct rockchip_drm_private *priv = dev->dev_private;
-	struct drm_crtc *crtc;
-	struct rockchip_hdmi *hdmi;
+	const struct dw_hdmi_mpll_config *mpll_cfg = rockchip_mpll_cfg;
+	int pclk = mode->clock * 1000;
+	bool valid = false;
+	int i;
 
-	/*
-	 * Pixel clocks we support are always < 2GHz and so fit in an
-	 * int.  We should make sure source rate does too so we don't get
-	 * overflow when we multiply by 1000.
-	 */
-	if (mode->clock > INT_MAX / 1000)
-		return MODE_BAD;
-	/*
-	 * If sink max TMDS clock < 340MHz, we should check the mode pixel
-	 * clock > 340MHz is YCbCr420 or not.
-	 */
-	if (mode->clock > 340000 &&
-	    connector->display_info.max_tmds_clock < 340000 &&
-	    !drm_mode_is_420(&connector->display_info, mode))
-		return MODE_BAD;
-
-	if (!encoder) {
-		const struct drm_connector_helper_funcs *funcs;
-
-		funcs = connector->helper_private;
-		if (funcs->atomic_best_encoder)
-			encoder = funcs->atomic_best_encoder(connector,
-							     connector->state);
-		else if (funcs->best_encoder)
-			encoder = funcs->best_encoder(connector);
-		else {
-			dump_stack();
-			encoder = drm_connector_get_single_encoder(connector);
+	for (i = 0; mpll_cfg[i].mpixelclock != (~0UL); i++) {
+		if (pclk == mpll_cfg[i].mpixelclock) {
+			valid = true;
+			break;
 		}
 	}
 
-	if (!encoder || !encoder->possible_crtcs)
-		return MODE_BAD;
-
-	hdmi = to_rockchip_hdmi(encoder);
-
-	/*
-	 * ensure all drm display mode can work, if someone want support more
-	 * resolutions, please limit the possible_crtc, only connect to
-	 * needed crtc.
-	 */
-	drm_for_each_crtc(crtc, connector->dev) {
-		int pipe = drm_crtc_index(crtc);
-		const struct rockchip_crtc_funcs *funcs =
-						priv->crtc_funcs[pipe];
-
-		if (!(encoder->possible_crtcs & drm_crtc_mask(crtc)))
-			continue;
-		if (!funcs || !funcs->mode_valid)
-			continue;
-
-		status = funcs->mode_valid(crtc, mode,
-					   DRM_MODE_CONNECTOR_HDMIA);
-		if (status != MODE_OK)
-			return status;
-	}
-
-	return status;
+	return (valid) ? MODE_OK : MODE_BAD;
 }
 
 static void dw_hdmi_rockchip_encoder_disable(struct drm_encoder *encoder)
@@ -369,9 +331,6 @@ static void dw_hdmi_rockchip_encoder_enable(struct drm_encoder *encoder)
 	if (hdmi->chip_data->lcdsel_grf_reg < 0)
 		return;
 
-	if (hdmi->phy)
-		phy_set_bus_width(hdmi->phy, hdmi->phy_bus_width);
-
 	clk_set_rate(hdmi->dclk, crtc->state->adjusted_mode.crtc_clock * 1000);
 	clk_prepare_enable(hdmi->dclk);
 }
@@ -398,13 +357,11 @@ static const struct drm_encoder_helper_funcs dw_hdmi_rockchip_encoder_helper_fun
 };
 
 static int dw_hdmi_rockchip_genphy_init(struct dw_hdmi *dw_hdmi, void *data,
-			     struct drm_display_mode *mode)
+					const struct drm_display_info *display,
+					const struct drm_display_mode *mode)
 {
 	struct rockchip_hdmi *hdmi = (struct rockchip_hdmi *)data;
 
-	while (hdmi->phy->power_count > 0)
-		phy_power_off(hdmi->phy);
-	dw_hdmi_set_high_tmds_clock_ratio(dw_hdmi);
 	return phy_power_on(hdmi->phy);
 }
 
@@ -701,26 +658,12 @@ static const struct component_ops dw_hdmi_rockchip_ops = {
 
 static int dw_hdmi_rockchip_probe(struct platform_device *pdev)
 {
-	pm_runtime_enable(&pdev->dev);
-	pm_runtime_get_sync(&pdev->dev);
-
 	return component_add(&pdev->dev, &dw_hdmi_rockchip_ops);
 }
 
 static int dw_hdmi_rockchip_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &dw_hdmi_rockchip_ops);
-	pm_runtime_disable(&pdev->dev);
-
-	return 0;
-}
-
-static int __maybe_unused dw_hdmi_rockchip_suspend(struct device *dev)
-{
-	struct rockchip_hdmi *hdmi = dev_get_drvdata(dev);
-
-	dw_hdmi_suspend(hdmi->hdmi);
-	pm_runtime_put_sync(dev);
 
 	return 0;
 }
@@ -729,15 +672,13 @@ static int __maybe_unused dw_hdmi_rockchip_resume(struct device *dev)
 {
 	struct rockchip_hdmi *hdmi = dev_get_drvdata(dev);
 
-	pm_runtime_get_sync(dev);
 	dw_hdmi_resume(hdmi->hdmi);
 
 	return 0;
 }
 
 static const struct dev_pm_ops dw_hdmi_rockchip_pm = {
-	SET_SYSTEM_SLEEP_PM_OPS(dw_hdmi_rockchip_suspend,
-				dw_hdmi_rockchip_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(NULL, dw_hdmi_rockchip_resume)
 };
 
 struct platform_driver dw_hdmi_rockchip_pltfm_driver = {

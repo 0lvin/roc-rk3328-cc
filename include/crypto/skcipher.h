@@ -18,7 +18,7 @@
  *	@iv: Initialisation Vector
  *	@src: Source SG list
  *	@dst: Destination SG list
- *	@base: Underlying async request request
+ *	@base: Underlying async request
  *	@__ctx: Start of private context data
  */
 struct skcipher_request {
@@ -196,6 +196,8 @@ static inline struct crypto_tfm *crypto_skcipher_tfm(
 /**
  * crypto_free_skcipher() - zeroize and free cipher handle
  * @tfm: cipher handle to be freed
+ *
+ * If @tfm is a NULL or error pointer, this function does nothing.
  */
 static inline void crypto_free_skcipher(struct crypto_skcipher *tfm)
 {
@@ -508,7 +510,7 @@ static inline struct skcipher_request *skcipher_request_alloc(
  */
 static inline void skcipher_request_free(struct skcipher_request *req)
 {
-	kzfree(req);
+	kfree_sensitive(req);
 }
 
 static inline void skcipher_request_zero(struct skcipher_request *req)

@@ -124,7 +124,7 @@ static struct sysctl_test tests[] = {
 		.descr = "ctx:write sysctl:write read ok narrow",
 		.insns = {
 			/* u64 w = (u16)write & 1; */
-#if __BYTE_ORDER == __LITTLE_ENDIAN
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 			BPF_LDX_MEM(BPF_H, BPF_REG_7, BPF_REG_1,
 				    offsetof(struct bpf_sysctl, write)),
 #else
@@ -184,7 +184,7 @@ static struct sysctl_test tests[] = {
 		.descr = "ctx:file_pos sysctl:read read ok narrow",
 		.insns = {
 			/* If (file_pos == X) */
-#if __BYTE_ORDER == __LITTLE_ENDIAN
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 			BPF_LDX_MEM(BPF_B, BPF_REG_7, BPF_REG_1,
 				    offsetof(struct bpf_sysctl, file_pos)),
 #else
@@ -1619,14 +1619,8 @@ int main(int argc, char **argv)
 	int cgfd = -1;
 	int err = 0;
 
-	if (setup_cgroup_environment())
-		goto err;
-
-	cgfd = create_and_get_cgroup(CG_PATH);
+	cgfd = cgroup_setup_and_join(CG_PATH);
 	if (cgfd < 0)
-		goto err;
-
-	if (join_cgroup(CG_PATH))
 		goto err;
 
 	if (run_tests(cgfd))

@@ -9,7 +9,7 @@
 #include <linux/io.h>
 #include <linux/of.h>
 
-#include <dt-bindings/clock/x1830-cgu.h>
+#include <dt-bindings/clock/ingenic,x1830-cgu.h>
 
 #include "cgu.h"
 #include "pm.h"
@@ -327,6 +327,19 @@ static const struct ingenic_cgu_clk_info x1830_cgu_clocks[] = {
 		"ssi_mux", CGU_CLK_MUX,
 		.parents = { X1830_CLK_EXCLK, X1830_CLK_SSIPLL_DIV2, -1, -1 },
 		.mux = { CGU_REG_SSICDR, 29, 1 },
+	},
+
+	[X1830_CLK_EXCLK_DIV512] = {
+		"exclk_div512", CGU_CLK_FIXDIV,
+		.parents = { X1830_CLK_EXCLK },
+		.fixdiv = { 512 },
+	},
+
+	[X1830_CLK_RTC] = {
+		"rtc_ercs", CGU_CLK_MUX | CGU_CLK_GATE,
+		.parents = { X1830_CLK_EXCLK_DIV512, X1830_CLK_RTCLK },
+		.mux = { CGU_REG_OPCR, 2, 1},
+		.gate = { CGU_REG_CLKGR0, 29 },
 	},
 
 	/* Gate-only clocks */

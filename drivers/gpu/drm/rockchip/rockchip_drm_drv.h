@@ -24,32 +24,6 @@ struct drm_device;
 struct drm_connector;
 struct iommu_domain;
 
-/*
- * Rockchip drm private crtc funcs.
- * @enable_vblank: enable crtc vblank irq.
- * @disable_vblank: disable crtc vblank irq.
- * @bandwidth: report present crtc bandwidth consume.
- */
-struct rockchip_crtc_funcs {
-	int (*enable_vblank)(struct drm_crtc *crtc);
-	void (*disable_vblank)(struct drm_crtc *crtc);
-	size_t (*bandwidth)(struct drm_crtc *crtc,
-			    struct drm_crtc_state *crtc_state);
-	void (*cancel_pending_vblank)(struct drm_crtc *crtc, struct drm_file *file_priv);
-	int (*debugfs_init)(struct drm_minor *minor, struct drm_crtc *crtc);
-	int (*debugfs_dump)(struct drm_crtc *crtc, struct seq_file *s);
-	void (*regs_dump)(struct drm_crtc *crtc, struct seq_file *s);
-	enum drm_mode_status (*mode_valid)(struct drm_crtc *crtc,
-					   const struct drm_display_mode *mode,
-					   int output_type);
-};
-
-struct rockchip_atomic_commit {
-	struct drm_atomic_state *state;
-	struct drm_device *dev;
-	size_t bandwidth;
-};
-
 struct rockchip_crtc_state {
 	struct drm_crtc_state base;
 	int output_type;
@@ -74,13 +48,6 @@ struct rockchip_drm_private {
 	struct iommu_domain *domain;
 	struct mutex mm_lock;
 	struct drm_mm mm;
-	struct list_head psr_list;
-	struct mutex psr_list_lock;
-
-	const struct rockchip_crtc_funcs *crtc_funcs[ROCKCHIP_MAX_CRTC];
-	struct rockchip_atomic_commit *commit;
-	/* protect async commit */
-	struct devfreq *devfreq;
 };
 
 int rockchip_drm_dma_attach_device(struct drm_device *drm_dev,

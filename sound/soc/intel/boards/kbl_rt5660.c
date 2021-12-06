@@ -165,8 +165,8 @@ static int kabylake_rt5660_codec_init(struct snd_soc_pcm_runtime *rtd)
 		dev_warn(component->dev, "Failed to add driver gpios\n");
 
 	/* Request rt5660 GPIO for lineout mute control, return if fails */
-	ctx->gpio_lo_mute = devm_gpiod_get(component->dev, "lineout-mute",
-					   GPIOD_OUT_HIGH);
+	ctx->gpio_lo_mute = gpiod_get(component->dev, "lineout-mute",
+				      GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->gpio_lo_mute)) {
 		dev_err(component->dev, "Can't find GPIO_MUTE# gpio\n");
 		return PTR_ERR(ctx->gpio_lo_mute);
@@ -207,6 +207,18 @@ static int kabylake_rt5660_codec_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+static void kabylake_rt5660_codec_exit(struct snd_soc_pcm_runtime *rtd)
+{
+	struct kbl_codec_private *ctx = snd_soc_card_get_drvdata(rtd->card);
+
+	/*
+	 * The .exit() can be reached without going through the .init()
+	 * so explicitly test if the gpiod is valid
+	 */
+	if (!IS_ERR_OR_NULL(ctx->gpio_lo_mute))
+		gpiod_put(ctx->gpio_lo_mute);
+}
+
 static int kabylake_hdmi_init(struct snd_soc_pcm_runtime *rtd, int device)
 {
 	struct kbl_codec_private *ctx = snd_soc_card_get_drvdata(rtd->card);
@@ -243,7 +255,7 @@ static int kabylake_hdmi3_init(struct snd_soc_pcm_runtime *rtd)
 static int kabylake_rt5660_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	int ret;
 
@@ -421,9 +433,10 @@ static struct snd_soc_dai_link kabylake_rt5660_dais[] = {
 		.id = 0,
 		.no_pcm = 1,
 		.init = kabylake_rt5660_codec_init,
+		.exit = kabylake_rt5660_codec_exit,
 		.dai_fmt = SND_SOC_DAIFMT_I2S |
 		SND_SOC_DAIFMT_NB_NF |
-		SND_SOC_DAIFMT_CBS_CFS,
+		SND_SOC_DAIFMT_CBC_CFC,
 		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = kabylake_ssp0_fixup,
 		.ops = &kabylake_rt5660_ops,
@@ -535,6 +548,7 @@ static const struct platform_device_id kbl_board_ids[] = {
 	},
 	{ }
 };
+MODULE_DEVICE_TABLE(platform, kbl_board_ids);
 
 static struct platform_driver kabylake_audio = {
 	.probe = kabylake_audio_probe,
@@ -551,4 +565,3 @@ module_platform_driver(kabylake_audio)
 MODULE_DESCRIPTION("Audio Machine driver-RT5660 in I2S mode");
 MODULE_AUTHOR("Hui Wang <hui.wang@canonical.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:kbl_rt5660");

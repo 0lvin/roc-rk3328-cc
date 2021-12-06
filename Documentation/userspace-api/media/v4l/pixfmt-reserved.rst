@@ -1,11 +1,4 @@
-.. Permission is granted to copy, distribute and/or modify this
-.. document under the terms of the GNU Free Documentation License,
-.. Version 1.1 or any later version published by the Free Software
-.. Foundation, with no Invariant Sections, no Front-Cover Texts
-.. and no Back-Cover Texts. A copy of the license is included at
-.. Documentation/userspace-api/media/fdl-appendix.rst.
-..
-.. TODO: replace it to GFDL-1.1-or-later WITH no-invariant-sections
+.. SPDX-License-Identifier: GFDL-1.1-no-invariants-or-later
 
 .. _pixfmt-reserved:
 
@@ -24,7 +17,11 @@ you think your format should be listed in a standard format section
 please make a proposal on the linux-media mailing list.
 
 
-.. tabularcolumns:: |p{6.6cm}|p{2.2cm}|p{8.7cm}|
+.. tabularcolumns:: |p{6.6cm}|p{2.2cm}|p{8.5cm}|
+
+.. raw:: latex
+
+    \small
 
 .. _reserved-formats:
 
@@ -51,14 +48,6 @@ please make a proposal on the linux-media mailing list.
       - ``V4L2_PIX_FMT_HI240``
       - 'HI24'
       - 8 bit RGB format used by the BTTV driver.
-    * .. _V4L2-PIX-FMT-HM12:
-
-      - ``V4L2_PIX_FMT_HM12``
-      - 'HM12'
-      - YUV 4:2:0 format used by the IVTV driver.
-
-	The format is documented in the kernel sources in the file
-	``Documentation/userspace-api/media/drivers/cx2341x-uapi.rst``
     * .. _V4L2-PIX-FMT-CPIA1:
 
       - ``V4L2_PIX_FMT_CPIA1``
@@ -249,34 +238,14 @@ please make a proposal on the linux-media mailing list.
 	It is an opaque intermediate format and the MDP hardware must be
 	used to convert ``V4L2_PIX_FMT_MT21C`` to ``V4L2_PIX_FMT_NV12M``,
 	``V4L2_PIX_FMT_YUV420M`` or ``V4L2_PIX_FMT_YVU420``.
-    * .. _V4L2-PIX-FMT-SUNXI-TILED-NV12:
+    * .. _V4L2-PIX-FMT-MM21:
 
-      - ``V4L2_PIX_FMT_SUNXI_TILED_NV12``
-      - 'ST12'
-      - Two-planar NV12-based format used by the video engine found on Allwinner
-	(codenamed sunxi) platforms, with 32x32 tiles for the luminance plane
-	and 32x64 tiles for the chrominance plane. The data in each tile is
-	stored in linear order, within the tile bounds. Each tile follows the
-	previous one linearly in memory (from left to right, top to bottom).
+      - ``V4L2_PIX_FMT_MM21``
+      - 'MM21'
+      - Non-compressed, tiled two-planar format used by Mediatek MT8183.
+	This is an opaque intermediate format and the MDP3 hardware can be
+	used to convert it to other formats.
 
-	The associated buffer dimensions are aligned to match an integer number
-	of tiles, resulting in 32-aligned resolutions for the luminance plane
-	and 16-aligned resolutions for the chrominance plane (with 2x2
-	subsampling).
+.. raw:: latex
 
-.. tabularcolumns:: |p{6.6cm}|p{2.2cm}|p{8.7cm}|
-
-.. _format-flags:
-
-.. flat-table:: Format Flags
-    :header-rows:  0
-    :stub-columns: 0
-    :widths:       3 1 4
-
-    * - ``V4L2_PIX_FMT_FLAG_PREMUL_ALPHA``
-      - 0x00000001
-      - The color values are premultiplied by the alpha channel value. For
-	example, if a light blue pixel with 50% transparency was described
-	by RGBA values (128, 192, 255, 128), the same pixel described with
-	premultiplied colors would be described by RGBA values (64, 96,
-	128, 128)
+    \normalsize

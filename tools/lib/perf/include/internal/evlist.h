@@ -16,6 +16,7 @@ struct perf_mmap_param;
 struct perf_evlist {
 	struct list_head	 entries;
 	int			 nr_entries;
+	int			 nr_groups;
 	bool			 has_user_cpus;
 	struct perf_cpu_map	*cpus;
 	struct perf_cpu_map	*all_cpus;
@@ -45,7 +46,7 @@ struct perf_evlist_mmap_ops {
 
 int perf_evlist__alloc_pollfd(struct perf_evlist *evlist);
 int perf_evlist__add_pollfd(struct perf_evlist *evlist, int fd,
-			    void *ptr, short revent);
+			    void *ptr, short revent, enum fdarray_flags flags);
 
 int perf_evlist__mmap_ops(struct perf_evlist *evlist,
 			  struct perf_evlist_mmap_ops *ops,
@@ -124,4 +125,7 @@ int perf_evlist__id_add_fd(struct perf_evlist *evlist,
 			   struct perf_evsel *evsel,
 			   int cpu, int thread, int fd);
 
+void perf_evlist__reset_id_hash(struct perf_evlist *evlist);
+
+void __perf_evlist__set_leader(struct list_head *list);
 #endif /* __LIBPERF_INTERNAL_EVLIST_H */

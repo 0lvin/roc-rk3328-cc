@@ -156,6 +156,7 @@ tunnel_key_copy_vxlan_opt(const struct nlattr *nla, void *dst, int dst_len,
 		struct vxlan_metadata *md = dst;
 
 		md->gbp = nla_get_u32(tb[TCA_TUNNEL_KEY_ENC_OPT_VXLAN_GBP]);
+		md->gbp &= VXLAN_GBP_MASK;
 	}
 
 	return sizeof(struct vxlan_metadata);
@@ -354,11 +355,11 @@ static void tunnel_key_release_params(struct tcf_tunnel_key_params *p)
 
 static int tunnel_key_init(struct net *net, struct nlattr *nla,
 			   struct nlattr *est, struct tc_action **a,
-			   int ovr, int bind, bool rtnl_held,
 			   struct tcf_proto *tp, u32 act_flags,
 			   struct netlink_ext_ack *extack)
 {
 	struct tc_action_net *tn = net_generic(net, tunnel_key_net_id);
+	bool bind = act_flags & TCA_ACT_FLAGS_BIND;
 	struct nlattr *tb[TCA_TUNNEL_KEY_MAX + 1];
 	struct tcf_tunnel_key_params *params_new;
 	struct metadata_dst *metadata = NULL;
@@ -458,7 +459,7 @@ static int tunnel_key_init(struct net *net, struct nlattr *nla,
 
 			metadata = __ipv6_tun_set_dst(&saddr, &daddr, tos, ttl, dst_port,
 						      0, flags,
-						      key_id, 0);
+						      key_id, opts_len);
 		} else {
 			NL_SET_ERR_MSG(extack, "Missing either ipv4 or ipv6 src and dst");
 			ret = -EINVAL;
@@ -503,7 +504,7 @@ static int tunnel_key_init(struct net *net, struct nlattr *nla,
 		}
 
 		ret = ACT_P_CREATED;
-	} else if (!ovr) {
+	} else if (!(act_flags & TCA_ACT_FLAGS_REPLACE)) {
 		NL_SET_ERR_MSG(extack, "TC IDR already exists");
 		ret = -EEXIST;
 		goto release_tun_meta;
@@ -535,9 +536,6 @@ static int tunnel_key_init(struct net *net, struct nlattr *nla,
 	tunnel_key_release_params(params_new);
 	if (goto_ch)
 		tcf_chain_put_by_act(goto_ch);
-
-	if (ret == ACT_P_CREATED)
-		tcf_idr_insert(tn, *a);
 
 	return ret;
 

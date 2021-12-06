@@ -67,7 +67,7 @@ struct ad5360_chip_info {
  * @chip_info:		chip model specific constants, available modes etc
  * @vref_reg:		vref supply regulators
  * @ctrl:		control register cache
- * @lock		lock to protect the data buffer during SPI ops
+ * @lock:		lock to protect the data buffer during SPI ops
  * @data:		spi transfer buffers
  */
 
@@ -255,7 +255,7 @@ static ssize_t ad5360_read_dac_powerdown(struct device *dev,
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct ad5360_state *st = iio_priv(indio_dev);
 
-	return sprintf(buf, "%d\n", (bool)(st->ctrl & AD5360_SF_CTRL_PWR_DOWN));
+	return sysfs_emit(buf, "%d\n", (bool)(st->ctrl & AD5360_SF_CTRL_PWR_DOWN));
 }
 
 static int ad5360_update_ctrl(struct iio_dev *indio_dev, unsigned int set,
@@ -476,7 +476,6 @@ static int ad5360_probe(struct spi_device *spi)
 	st->chip_info = &ad5360_chip_info_tbl[type];
 	st->spi = spi;
 
-	indio_dev->dev.parent = &spi->dev;
 	indio_dev->name = spi_get_device_id(spi)->name;
 	indio_dev->info = &ad5360_info;
 	indio_dev->modes = INDIO_DIRECT_MODE;

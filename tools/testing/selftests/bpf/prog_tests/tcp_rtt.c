@@ -109,7 +109,7 @@ static int run_test(int cgroup_fd, int server_fd)
 		return -1;
 	}
 
-	map = bpf_map__next(NULL, obj);
+	map = bpf_object__next_map(obj, NULL);
 	map_fd = bpf_map__fd(map);
 
 	err = bpf_prog_attach(prog_fd, cgroup_fd, BPF_CGROUP_SOCK_OPS, 0);
@@ -118,7 +118,7 @@ static int run_test(int cgroup_fd, int server_fd)
 		goto close_bpf_object;
 	}
 
-	client_fd = connect_to_fd(AF_INET, SOCK_STREAM, server_fd);
+	client_fd = connect_to_fd(server_fd, 0);
 	if (client_fd < 0) {
 		err = -1;
 		goto close_bpf_object;
@@ -161,7 +161,7 @@ void test_tcp_rtt(void)
 	if (CHECK_FAIL(cgroup_fd < 0))
 		return;
 
-	server_fd = start_server(AF_INET, SOCK_STREAM);
+	server_fd = start_server(AF_INET, SOCK_STREAM, NULL, 0, 0);
 	if (CHECK_FAIL(server_fd < 0))
 		goto close_cgroup_fd;
 

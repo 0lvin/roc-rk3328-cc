@@ -371,7 +371,7 @@ out:
 static int create_active(struct sock_mapping *map, evtchn_port_t *evtchn)
 {
 	void *bytes;
-	int ret = -ENOMEM, irq = -1, i;
+	int ret, irq = -1, i;
 
 	*evtchn = 0;
 	init_waitqueue_head(&map->active.inflight_conn_req);
@@ -1263,7 +1263,7 @@ static void pvcalls_front_changed(struct xenbus_device *dev,
 		if (dev->state == XenbusStateClosed)
 			break;
 		/* Missed the backend's CLOSING state */
-		/* fall through */
+		fallthrough;
 	case XenbusStateClosing:
 		xenbus_frontend_closed(dev);
 		break;
@@ -1275,6 +1275,7 @@ static struct xenbus_driver pvcalls_front_driver = {
 	.probe = pvcalls_front_probe,
 	.remove = pvcalls_front_remove,
 	.otherend_changed = pvcalls_front_changed,
+	.not_essential = true,
 };
 
 static int __init pvcalls_frontend_init(void)

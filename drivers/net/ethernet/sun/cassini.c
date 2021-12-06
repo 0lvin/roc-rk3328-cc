@@ -443,8 +443,8 @@ static void cas_phy_powerdown(struct cas *cp)
 /* cp->lock held. note: the last put_page will free the buffer */
 static int cas_page_free(struct cas *cp, cas_page_t *page)
 {
-	pci_unmap_page(cp->pdev, page->dma_addr, cp->page_size,
-		       PCI_DMA_FROMDEVICE);
+	dma_unmap_page(&cp->pdev->dev, page->dma_addr, cp->page_size,
+		       DMA_FROM_DEVICE);
 	__free_pages(page->buffer, cp->page_order);
 	kfree(page);
 	return 0;
@@ -454,8 +454,8 @@ static int cas_page_free(struct cas *cp, cas_page_t *page)
 #define RX_USED_ADD(x, y)       ((x)->used += (y))
 #define RX_USED_SET(x, y)       ((x)->used  = (y))
 #else
-#define RX_USED_ADD(x, y)
-#define RX_USED_SET(x, y)
+#define RX_USED_ADD(x, y) do { } while(0)
+#define RX_USED_SET(x, y) do { } while(0)
 #endif
 
 /* local page allocation routines for the receive buffers. jumbo pages
@@ -474,8 +474,8 @@ static cas_page_t *cas_page_alloc(struct cas *cp, const gfp_t flags)
 	page->buffer = alloc_pages(flags, cp->page_order);
 	if (!page->buffer)
 		goto page_err;
-	page->dma_addr = pci_map_page(cp->pdev, page->buffer, 0,
-				      cp->page_size, PCI_DMA_FROMDEVICE);
+	page->dma_addr = dma_map_page(&cp->pdev->dev, page->buffer, 0,
+				      cp->page_size, DMA_FROM_DEVICE);
 	return page;
 
 page_err:
@@ -486,7 +486,7 @@ page_err:
 /* initialize spare pool of rx buffers, but allocate during the open */
 static void cas_spare_init(struct cas *cp)
 {
-  	spin_lock(&cp->rx_inuse_lock);
+	spin_lock(&cp->rx_inuse_lock);
 	INIT_LIST_HEAD(&cp->rx_inuse_list);
 	spin_unlock(&cp->rx_inuse_lock);
 
@@ -1599,6 +1599,7 @@ static inline int cas_mdio_link_not_up(struct cas *cp)
 			cas_phy_write(cp, MII_BMCR, val);
 			break;
 		}
+		break;
 	default:
 		break;
 	}
@@ -1863,8 +1864,8 @@ static inline void cas_tx_ringN(struct cas *cp, int ring, int limit)
 			daddr = le64_to_cpu(txd->buffer);
 			dlen = CAS_VAL(TX_DESC_BUFLEN,
 				       le64_to_cpu(txd->control));
-			pci_unmap_page(cp->pdev, daddr, dlen,
-				       PCI_DMA_TODEVICE);
+			dma_unmap_page(&cp->pdev->dev, daddr, dlen,
+				       DMA_TO_DEVICE);
 			entry = TX_DESC_NEXT(ring, entry);
 
 			/* tiny buffer may follow */
@@ -1957,12 +1958,13 @@ static int cas_rx_process_pkt(struct cas *cp, struct cas_rx_comp *rxc,
 		i = hlen;
 		if (!dlen) /* attach FCS */
 			i += cp->crc_size;
-		pci_dma_sync_single_for_cpu(cp->pdev, page->dma_addr + off, i,
-				    PCI_DMA_FROMDEVICE);
+		dma_sync_single_for_cpu(&cp->pdev->dev, page->dma_addr + off,
+					i, DMA_FROM_DEVICE);
 		addr = cas_page_map(page->buffer);
 		memcpy(p, addr + off, i);
-		pci_dma_sync_single_for_device(cp->pdev, page->dma_addr + off, i,
-				    PCI_DMA_FROMDEVICE);
+		dma_sync_single_for_device(&cp->pdev->dev,
+					   page->dma_addr + off, i,
+					   DMA_FROM_DEVICE);
 		cas_page_unmap(addr);
 		RX_USED_ADD(page, 0x100);
 		p += hlen;
@@ -1988,16 +1990,17 @@ static int cas_rx_process_pkt(struct cas *cp, struct cas_rx_comp *rxc,
 		i = hlen;
 		if (i == dlen)  /* attach FCS */
 			i += cp->crc_size;
-		pci_dma_sync_single_for_cpu(cp->pdev, page->dma_addr + off, i,
-				    PCI_DMA_FROMDEVICE);
+		dma_sync_single_for_cpu(&cp->pdev->dev, page->dma_addr + off,
+					i, DMA_FROM_DEVICE);
 
 		/* make sure we always copy a header */
 		swivel = 0;
 		if (p == (char *) skb->data) { /* not split */
 			addr = cas_page_map(page->buffer);
 			memcpy(p, addr + off, RX_COPY_MIN);
-			pci_dma_sync_single_for_device(cp->pdev, page->dma_addr + off, i,
-					PCI_DMA_FROMDEVICE);
+			dma_sync_single_for_device(&cp->pdev->dev,
+						   page->dma_addr + off, i,
+						   DMA_FROM_DEVICE);
 			cas_page_unmap(addr);
 			off += RX_COPY_MIN;
 			swivel = RX_COPY_MIN;
@@ -2024,12 +2027,14 @@ static int cas_rx_process_pkt(struct cas *cp, struct cas_rx_comp *rxc,
 
 			i = CAS_VAL(RX_COMP2_NEXT_INDEX, words[1]);
 			page = cp->rx_pages[CAS_VAL(RX_INDEX_RING, i)][CAS_VAL(RX_INDEX_NUM, i)];
-			pci_dma_sync_single_for_cpu(cp->pdev, page->dma_addr,
-					    hlen + cp->crc_size,
-					    PCI_DMA_FROMDEVICE);
-			pci_dma_sync_single_for_device(cp->pdev, page->dma_addr,
-					    hlen + cp->crc_size,
-					    PCI_DMA_FROMDEVICE);
+			dma_sync_single_for_cpu(&cp->pdev->dev,
+						page->dma_addr,
+						hlen + cp->crc_size,
+						DMA_FROM_DEVICE);
+			dma_sync_single_for_device(&cp->pdev->dev,
+						   page->dma_addr,
+						   hlen + cp->crc_size,
+						   DMA_FROM_DEVICE);
 
 			skb_shinfo(skb)->nr_frags++;
 			skb->data_len += hlen;
@@ -2066,12 +2071,13 @@ static int cas_rx_process_pkt(struct cas *cp, struct cas_rx_comp *rxc,
 		i = hlen;
 		if (i == dlen) /* attach FCS */
 			i += cp->crc_size;
-		pci_dma_sync_single_for_cpu(cp->pdev, page->dma_addr + off, i,
-				    PCI_DMA_FROMDEVICE);
+		dma_sync_single_for_cpu(&cp->pdev->dev, page->dma_addr + off,
+					i, DMA_FROM_DEVICE);
 		addr = cas_page_map(page->buffer);
 		memcpy(p, addr + off, i);
-		pci_dma_sync_single_for_device(cp->pdev, page->dma_addr + off, i,
-				    PCI_DMA_FROMDEVICE);
+		dma_sync_single_for_device(&cp->pdev->dev,
+					   page->dma_addr + off, i,
+					   DMA_FROM_DEVICE);
 		cas_page_unmap(addr);
 		if (p == (char *) skb->data) /* not split */
 			RX_USED_ADD(page, cp->mtu_stride);
@@ -2083,14 +2089,16 @@ static int cas_rx_process_pkt(struct cas *cp, struct cas_rx_comp *rxc,
 			p += hlen;
 			i = CAS_VAL(RX_COMP2_NEXT_INDEX, words[1]);
 			page = cp->rx_pages[CAS_VAL(RX_INDEX_RING, i)][CAS_VAL(RX_INDEX_NUM, i)];
-			pci_dma_sync_single_for_cpu(cp->pdev, page->dma_addr,
-					    dlen + cp->crc_size,
-					    PCI_DMA_FROMDEVICE);
+			dma_sync_single_for_cpu(&cp->pdev->dev,
+						page->dma_addr,
+						dlen + cp->crc_size,
+						DMA_FROM_DEVICE);
 			addr = cas_page_map(page->buffer);
 			memcpy(p, addr, dlen + cp->crc_size);
-			pci_dma_sync_single_for_device(cp->pdev, page->dma_addr,
-					    dlen + cp->crc_size,
-					    PCI_DMA_FROMDEVICE);
+			dma_sync_single_for_device(&cp->pdev->dev,
+						   page->dma_addr,
+						   dlen + cp->crc_size,
+						   DMA_FROM_DEVICE);
 			cas_page_unmap(addr);
 			RX_USED_ADD(page, dlen + cp->crc_size);
 		}
@@ -2271,7 +2279,7 @@ static int cas_rx_ringN(struct cas *cp, int ring, int budget)
 	drops = 0;
 	while (1) {
 		struct cas_rx_comp *rxc = rxcs + entry;
-		struct sk_buff *uninitialized_var(skb);
+		struct sk_buff *skb;
 		int type, len;
 		u64 words[4];
 		int i, dring;
@@ -2766,9 +2774,8 @@ static inline int cas_xmit_tx_ringN(struct cas *cp, int ring,
 
 	nr_frags = skb_shinfo(skb)->nr_frags;
 	len = skb_headlen(skb);
-	mapping = pci_map_page(cp->pdev, virt_to_page(skb->data),
-			       offset_in_page(skb->data), len,
-			       PCI_DMA_TODEVICE);
+	mapping = dma_map_page(&cp->pdev->dev, virt_to_page(skb->data),
+			       offset_in_page(skb->data), len, DMA_TO_DEVICE);
 
 	tentry = entry;
 	tabort = cas_calc_tabort(cp, (unsigned long) skb->data, len);
@@ -3020,7 +3027,7 @@ static void cas_mac_reset(struct cas *cp)
 /* Must be invoked under cp->lock. */
 static void cas_init_mac(struct cas *cp)
 {
-	unsigned char *e = &cp->dev->dev_addr[0];
+	const unsigned char *e = &cp->dev->dev_addr[0];
 	int i;
 	cas_mac_reset(cp);
 
@@ -3372,6 +3379,7 @@ static void cas_check_pci_invariants(struct cas *cp)
 static int cas_check_invariants(struct cas *cp)
 {
 	struct pci_dev *pdev = cp->pdev;
+	u8 addr[ETH_ALEN];
 	u32 cfg;
 	int i;
 
@@ -3400,8 +3408,8 @@ static int cas_check_invariants(struct cas *cp)
 	/* finish phy determination. MDIO1 takes precedence over MDIO0 if
 	 * they're both connected.
 	 */
-	cp->phy_type = cas_get_vpd_info(cp, cp->dev->dev_addr,
-					PCI_SLOT(pdev->devfn));
+	cp->phy_type = cas_get_vpd_info(cp, addr, PCI_SLOT(pdev->devfn));
+	eth_hw_addr_set(cp->dev, addr);
 	if (cp->phy_type & CAS_PHY_SERDES) {
 		cp->cas_flags |= CAS_FLAG_1000MB_CAP;
 		return 0; /* no more checking needed */
@@ -3882,8 +3890,8 @@ static void cas_clean_txd(struct cas *cp, int ring)
 			daddr = le64_to_cpu(txd[ent].buffer);
 			dlen  =  CAS_VAL(TX_DESC_BUFLEN,
 					 le64_to_cpu(txd[ent].control));
-			pci_unmap_page(cp->pdev, daddr, dlen,
-				       PCI_DMA_TODEVICE);
+			dma_unmap_page(&cp->pdev->dev, daddr, dlen,
+				       DMA_TO_DEVICE);
 
 			if (frag != skb_shinfo(skb)->nr_frags) {
 				i++;
@@ -4181,9 +4189,8 @@ static void cas_tx_tiny_free(struct cas *cp)
 		if (!cp->tx_tiny_bufs[i])
 			continue;
 
-		pci_free_consistent(pdev, TX_TINY_BUF_BLOCK,
-				    cp->tx_tiny_bufs[i],
-				    cp->tx_tiny_dvma[i]);
+		dma_free_coherent(&pdev->dev, TX_TINY_BUF_BLOCK,
+				  cp->tx_tiny_bufs[i], cp->tx_tiny_dvma[i]);
 		cp->tx_tiny_bufs[i] = NULL;
 	}
 }
@@ -4195,8 +4202,8 @@ static int cas_tx_tiny_alloc(struct cas *cp)
 
 	for (i = 0; i < N_TX_RINGS; i++) {
 		cp->tx_tiny_bufs[i] =
-			pci_alloc_consistent(pdev, TX_TINY_BUF_BLOCK,
-					     &cp->tx_tiny_dvma[i]);
+			dma_alloc_coherent(&pdev->dev, TX_TINY_BUF_BLOCK,
+					   &cp->tx_tiny_dvma[i], GFP_KERNEL);
 		if (!cp->tx_tiny_bufs[i]) {
 			cas_tx_tiny_free(cp);
 			return -1;
@@ -4754,7 +4761,7 @@ static int cas_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	switch (cmd) {
 	case SIOCGMIIPHY:		/* Get address of MII PHY in use. */
 		data->phy_id = cp->phy_addr;
-		/* Fallthrough... */
+		fallthrough;
 
 	case SIOCGMIIREG:		/* Read MII PHY register. */
 		spin_lock_irqsave(&cp->lock, flags);
@@ -4870,7 +4877,7 @@ static const struct net_device_ops cas_netdev_ops = {
 	.ndo_start_xmit		= cas_start_xmit,
 	.ndo_get_stats 		= cas_get_stats,
 	.ndo_set_rx_mode	= cas_set_multicast,
-	.ndo_do_ioctl		= cas_ioctl,
+	.ndo_eth_ioctl		= cas_ioctl,
 	.ndo_tx_timeout		= cas_tx_timeout,
 	.ndo_change_mtu		= cas_change_mtu,
 	.ndo_set_mac_address	= eth_mac_addr,
@@ -4958,10 +4965,9 @@ static int cas_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 
 	/* Configure DMA attributes. */
-	if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(64))) {
+	if (!dma_set_mask(&pdev->dev, DMA_BIT_MASK(64))) {
 		pci_using_dac = 1;
-		err = pci_set_consistent_dma_mask(pdev,
-						  DMA_BIT_MASK(64));
+		err = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64));
 		if (err < 0) {
 			dev_err(&pdev->dev, "Unable to obtain 64-bit DMA "
 			       "for consistent allocations\n");
@@ -4969,7 +4975,7 @@ static int cas_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		}
 
 	} else {
-		err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
+		err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
 		if (err) {
 			dev_err(&pdev->dev, "No usable DMA configuration, "
 			       "aborting\n");
@@ -5048,8 +5054,8 @@ static int cas_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		cas_saturn_firmware_init(cp);
 
 	cp->init_block =
-		pci_alloc_consistent(pdev, sizeof(struct cas_init_block),
-				     &cp->block_dvma);
+		dma_alloc_coherent(&pdev->dev, sizeof(struct cas_init_block),
+				   &cp->block_dvma, GFP_KERNEL);
 	if (!cp->init_block) {
 		dev_err(&pdev->dev, "Cannot allocate init block, aborting\n");
 		goto err_out_iounmap;
@@ -5109,8 +5115,8 @@ static int cas_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	return 0;
 
 err_out_free_consistent:
-	pci_free_consistent(pdev, sizeof(struct cas_init_block),
-			    cp->init_block, cp->block_dvma);
+	dma_free_coherent(&pdev->dev, sizeof(struct cas_init_block),
+			  cp->init_block, cp->block_dvma);
 
 err_out_iounmap:
 	mutex_lock(&cp->pm_mutex);
@@ -5164,18 +5170,17 @@ static void cas_remove_one(struct pci_dev *pdev)
 				      cp->orig_cacheline_size);
 	}
 #endif
-	pci_free_consistent(pdev, sizeof(struct cas_init_block),
-			    cp->init_block, cp->block_dvma);
+	dma_free_coherent(&pdev->dev, sizeof(struct cas_init_block),
+			  cp->init_block, cp->block_dvma);
 	pci_iounmap(pdev, cp->regs);
 	free_netdev(dev);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 }
 
-#ifdef CONFIG_PM
-static int cas_suspend(struct pci_dev *pdev, pm_message_t state)
+static int __maybe_unused cas_suspend(struct device *dev_d)
 {
-	struct net_device *dev = pci_get_drvdata(pdev);
+	struct net_device *dev = dev_get_drvdata(dev_d);
 	struct cas *cp = netdev_priv(dev);
 	unsigned long flags;
 
@@ -5204,9 +5209,9 @@ static int cas_suspend(struct pci_dev *pdev, pm_message_t state)
 	return 0;
 }
 
-static int cas_resume(struct pci_dev *pdev)
+static int __maybe_unused cas_resume(struct device *dev_d)
 {
-	struct net_device *dev = pci_get_drvdata(pdev);
+	struct net_device *dev = dev_get_drvdata(dev_d);
 	struct cas *cp = netdev_priv(dev);
 
 	netdev_info(dev, "resuming\n");
@@ -5227,17 +5232,15 @@ static int cas_resume(struct pci_dev *pdev)
 	mutex_unlock(&cp->pm_mutex);
 	return 0;
 }
-#endif /* CONFIG_PM */
+
+static SIMPLE_DEV_PM_OPS(cas_pm_ops, cas_suspend, cas_resume);
 
 static struct pci_driver cas_driver = {
 	.name		= DRV_MODULE_NAME,
 	.id_table	= cas_pci_tbl,
 	.probe		= cas_init_one,
 	.remove		= cas_remove_one,
-#ifdef CONFIG_PM
-	.suspend	= cas_suspend,
-	.resume		= cas_resume
-#endif
+	.driver.pm	= &cas_pm_ops,
 };
 
 static int __init cas_init(void)

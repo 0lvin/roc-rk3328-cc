@@ -20,7 +20,6 @@ Contents:
    ieee802154
    j1939
    kapi
-   z8530book
    msg_zerocopy
    failover
    net_dim
@@ -39,36 +38,28 @@ Contents:
    nfc
    6lowpan
    6pack
-   altera_tse
    arcnet-hardware
    arcnet
    atm
    ax25
-   baycom
    bonding
    cdc_mbim
-   cops
-   cxacru
    dccp
    dctcp
    decnet
-   defza
    dns_resolver
    driver
    eql
    fib_trie
    filter
-   fore200e
-   framerelay
    generic-hdlc
    generic_netlink
    gen_stats
    gtp
-   hinic
    ila
+   ioam6-sysctl
    ipddp
    ip_dynaddr
-   iphase
    ipsec
    ip-sysctl
    ipv6
@@ -77,15 +68,17 @@ Contents:
    kcm
    l2tp
    lapb-module
-   ltpc
    mac80211-injection
+   mctp
    mpls-sysctl
+   mptcp-sysctl
    multiqueue
    netconsole
    netdev-features
    netdevices
    netfilter-sysctl
    netif-msg
+   nexthop-group-resilient
    nf_conntrack-sysctl
    nf_flowtable
    openvswitch
@@ -97,20 +90,21 @@ Contents:
    ppp_generic
    proc_net_tcp
    radiotap-headers
-   ray_cs
    rds
    regulatory
    rxrpc
    sctp
    secid
    seg6-sysctl
-   skfp
+   statistics
    strparser
    switchdev
+   sysfs-tagging
    tc-actions-env-rules
    tcp-thin
    team
    timestamping
+   tipc
    tproxy
    tuntap
    udplite
@@ -122,7 +116,6 @@ Contents:
    xfrm_proc
    xfrm_sync
    xfrm_sysctl
-   z8530drv
 
 .. only::  subproject and html
 

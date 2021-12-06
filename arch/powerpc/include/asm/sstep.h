@@ -13,12 +13,11 @@ struct pt_regs;
  * we don't allow putting a breakpoint on an mtmsrd instruction.
  * Similarly we don't allow breakpoints on rfid instructions.
  * These macros tell us if an instruction is a mtmsrd or rfid.
- * Note that IS_MTMSRD returns true for both an mtmsr (32-bit)
- * and an mtmsrd (64-bit).
+ * Note that these return true for both mtmsr/rfi (32-bit)
+ * and mtmsrd/rfid (64-bit).
  */
 #define IS_MTMSRD(instr)	((ppc_inst_val(instr) & 0xfc0007be) == 0x7c000124)
-#define IS_RFID(instr)		((ppc_inst_val(instr) & 0xfc0007fe) == 0x4c000024)
-#define IS_RFI(instr)		((ppc_inst_val(instr) & 0xfc0007fe) == 0x4c000064)
+#define IS_RFID(instr)		((ppc_inst_val(instr) & 0xfc0007be) == 0x4c000024)
 
 enum instruction_type {
 	COMPUTE,		/* arith/logical/CR op, etc. */
@@ -40,6 +39,7 @@ enum instruction_type {
 	CACHEOP,
 	BARRIER,
 	SYSCALL,
+	SYSCALL_VECTORED_0,
 	MFMSR,
 	MTMSR,
 	RFI,
@@ -103,6 +103,12 @@ enum instruction_type {
 #define GETLENGTH(t)   (((t) & PREFIXED) ? 8 : 4)
 
 #define MKOP(t, f, s)	((t) | (f) | SIZE(s))
+
+/* Prefix instruction operands */
+#define GET_PREFIX_RA(i)	(((i) >> 16) & 0x1f)
+#define GET_PREFIX_R(i)		((i) & (1ul << 20))
+
+extern s32 patch__exec_instr;
 
 struct instruction_op {
 	int type;

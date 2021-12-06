@@ -76,6 +76,16 @@ __be32		do_nfsd_create(struct svc_rqst *, struct svc_fh *,
 __be32		nfsd_commit(struct svc_rqst *, struct svc_fh *,
 				loff_t, unsigned long, __be32 *verf);
 #endif /* CONFIG_NFSD_V3 */
+#ifdef CONFIG_NFSD_V4
+__be32		nfsd_getxattr(struct svc_rqst *rqstp, struct svc_fh *fhp,
+			    char *name, void **bufp, int *lenp);
+__be32		nfsd_listxattr(struct svc_rqst *rqstp, struct svc_fh *fhp,
+			    char **bufp, int *lenp);
+__be32		nfsd_removexattr(struct svc_rqst *rqstp, struct svc_fh *fhp,
+			    char *name);
+__be32		nfsd_setxattr(struct svc_rqst *rqstp, struct svc_fh *fhp,
+			    char *name, void *buf, u32 len, u32 flags);
+#endif
 int 		nfsd_open_break_lease(struct inode *, int);
 __be32		nfsd_open(struct svc_rqst *, struct svc_fh *, umode_t,
 				int, struct file **);
@@ -142,7 +152,7 @@ static inline void fh_drop_write(struct svc_fh *fh)
 	}
 }
 
-static inline __be32 fh_getattr(struct svc_fh *fh, struct kstat *stat)
+static inline __be32 fh_getattr(const struct svc_fh *fh, struct kstat *stat)
 {
 	struct path p = {.mnt = fh->fh_export->ex_path.mnt,
 			 .dentry = fh->fh_dentry};

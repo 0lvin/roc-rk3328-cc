@@ -17,14 +17,17 @@ config NET_VENDOR_SOLARFLARE
 if NET_VENDOR_SOLARFLARE
 
 config SFC
-	tristate "Solarflare SFC9000/SFC9100-family support"
+	tristate "Solarflare SFC9000/SFC9100/EF100-family support"
 	depends on PCI
+	depends on PTP_1588_CLOCK_OPTIONAL
 	select MDIO
 	select CRC32
-	imply PTP_1588_CLOCK
 	help
 	  This driver supports 10/40-gigabit Ethernet cards based on
 	  the Solarflare SFC9000-family and SFC9100-family controllers.
+
+	  It also supports 10/25/40/100-gigabit Ethernet cards based
+	  on the Solarflare EF100 networking IP in Xilinx FPGAs.
 
 	  To compile this driver as a module, choose M here.  The module
 	  will be called sfc.

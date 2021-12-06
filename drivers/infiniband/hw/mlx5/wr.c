@@ -217,7 +217,7 @@ static __be64 sig_mkey_mask(void)
 static void set_reg_umr_seg(struct mlx5_wqe_umr_ctrl_seg *umr,
 			    struct mlx5_ib_mr *mr, u8 flags, bool atomic)
 {
-	int size = (mr->ndescs + mr->meta_ndescs) * mr->desc_size;
+	int size = (mr->mmkey.ndescs + mr->meta_ndescs) * mr->desc_size;
 
 	memset(umr, 0, sizeof(*umr));
 
@@ -263,7 +263,9 @@ static __be64 get_umr_update_translation_mask(void)
 	return cpu_to_be64(result);
 }
 
-static __be64 get_umr_update_access_mask(int atomic)
+static __be64 get_umr_update_access_mask(int atomic,
+					 int relaxed_ordering_write,
+					 int relaxed_ordering_read)
 {
 	u64 result;
 
@@ -274,6 +276,12 @@ static __be64 get_umr_update_access_mask(int atomic)
 
 	if (atomic)
 		result |= MLX5_MKEY_MASK_A;
+
+	if (relaxed_ordering_write)
+		result |= MLX5_MKEY_MASK_RELAXED_ORDERING_WRITE;
+
+	if (relaxed_ordering_read)
+		result |= MLX5_MKEY_MASK_RELAXED_ORDERING_READ;
 
 	return cpu_to_be64(result);
 }
@@ -289,17 +297,28 @@ static __be64 get_umr_update_pd_mask(void)
 
 static int umr_check_mkey_mask(struct mlx5_ib_dev *dev, u64 mask)
 {
-	if ((mask & MLX5_MKEY_MASK_PAGE_SIZE &&
-	     MLX5_CAP_GEN(dev->mdev, umr_modify_entity_size_disabled)) ||
-	    (mask & MLX5_MKEY_MASK_A &&
-	     MLX5_CAP_GEN(dev->mdev, umr_modify_atomic_disabled)))
+	if (mask & MLX5_MKEY_MASK_PAGE_SIZE &&
+	    MLX5_CAP_GEN(dev->mdev, umr_modify_entity_size_disabled))
 		return -EPERM;
+
+	if (mask & MLX5_MKEY_MASK_A &&
+	    MLX5_CAP_GEN(dev->mdev, umr_modify_atomic_disabled))
+		return -EPERM;
+
+	if (mask & MLX5_MKEY_MASK_RELAXED_ORDERING_WRITE &&
+	    !MLX5_CAP_GEN(dev->mdev, relaxed_ordering_write_umr))
+		return -EPERM;
+
+	if (mask & MLX5_MKEY_MASK_RELAXED_ORDERING_READ &&
+	    !MLX5_CAP_GEN(dev->mdev, relaxed_ordering_read_umr))
+		return -EPERM;
+
 	return 0;
 }
 
 static int set_reg_umr_segment(struct mlx5_ib_dev *dev,
 			       struct mlx5_wqe_umr_ctrl_seg *umr,
-			       const struct ib_send_wr *wr, int atomic)
+			       const struct ib_send_wr *wr)
 {
 	const struct mlx5_umr_wr *umrwr = umr_wr(wr);
 
@@ -325,7 +344,10 @@ static int set_reg_umr_segment(struct mlx5_ib_dev *dev,
 	if (wr->send_flags & MLX5_IB_SEND_UMR_UPDATE_TRANSLATION)
 		umr->mkey_mask |= get_umr_update_translation_mask();
 	if (wr->send_flags & MLX5_IB_SEND_UMR_UPDATE_PD_ACCESS) {
-		umr->mkey_mask |= get_umr_update_access_mask(atomic);
+		umr->mkey_mask |= get_umr_update_access_mask(
+			!!(MLX5_CAP_GEN(dev->mdev, atomic)),
+			!!(MLX5_CAP_GEN(dev->mdev, relaxed_ordering_write_umr)),
+			!!(MLX5_CAP_GEN(dev->mdev, relaxed_ordering_read_umr)));
 		umr->mkey_mask |= get_umr_update_pd_mask();
 	}
 	if (wr->send_flags & MLX5_IB_SEND_UMR_ENABLE_MR)
@@ -352,7 +374,7 @@ static void set_reg_mkey_seg(struct mlx5_mkey_seg *seg,
 			     struct mlx5_ib_mr *mr,
 			     u32 key, int access)
 {
-	int ndescs = ALIGN(mr->ndescs + mr->meta_ndescs, 8) >> 1;
+	int ndescs = ALIGN(mr->mmkey.ndescs + mr->meta_ndescs, 8) >> 1;
 
 	memset(seg, 0, sizeof(*seg));
 
@@ -376,34 +398,48 @@ static void set_linv_mkey_seg(struct mlx5_mkey_seg *seg)
 	seg->status = MLX5_MKEY_STATUS_FREE;
 }
 
-static void set_reg_mkey_segment(struct mlx5_mkey_seg *seg,
+static void set_reg_mkey_segment(struct mlx5_ib_dev *dev,
+				 struct mlx5_mkey_seg *seg,
 				 const struct ib_send_wr *wr)
 {
 	const struct mlx5_umr_wr *umrwr = umr_wr(wr);
 
 	memset(seg, 0, sizeof(*seg));
 	if (wr->send_flags & MLX5_IB_SEND_UMR_DISABLE_MR)
-		seg->status = MLX5_MKEY_STATUS_FREE;
+		MLX5_SET(mkc, seg, free, 1);
 
-	seg->flags = convert_access(umrwr->access_flags);
+	MLX5_SET(mkc, seg, a,
+		 !!(umrwr->access_flags & IB_ACCESS_REMOTE_ATOMIC));
+	MLX5_SET(mkc, seg, rw,
+		 !!(umrwr->access_flags & IB_ACCESS_REMOTE_WRITE));
+	MLX5_SET(mkc, seg, rr, !!(umrwr->access_flags & IB_ACCESS_REMOTE_READ));
+	MLX5_SET(mkc, seg, lw, !!(umrwr->access_flags & IB_ACCESS_LOCAL_WRITE));
+	MLX5_SET(mkc, seg, lr, 1);
+	if (MLX5_CAP_GEN(dev->mdev, relaxed_ordering_write_umr))
+		MLX5_SET(mkc, seg, relaxed_ordering_write,
+			 !!(umrwr->access_flags & IB_ACCESS_RELAXED_ORDERING));
+	if (MLX5_CAP_GEN(dev->mdev, relaxed_ordering_read_umr))
+		MLX5_SET(mkc, seg, relaxed_ordering_read,
+			 !!(umrwr->access_flags & IB_ACCESS_RELAXED_ORDERING));
+
 	if (umrwr->pd)
-		seg->flags_pd = cpu_to_be32(to_mpd(umrwr->pd)->pdn);
+		MLX5_SET(mkc, seg, pd, to_mpd(umrwr->pd)->pdn);
 	if (wr->send_flags & MLX5_IB_SEND_UMR_UPDATE_TRANSLATION &&
 	    !umrwr->length)
-		seg->flags_pd |= cpu_to_be32(MLX5_MKEY_LEN64);
+		MLX5_SET(mkc, seg, length64, 1);
 
-	seg->start_addr = cpu_to_be64(umrwr->virt_addr);
-	seg->len = cpu_to_be64(umrwr->length);
-	seg->log2_page_size = umrwr->page_shift;
-	seg->qpn_mkey7_0 = cpu_to_be32(0xffffff00 |
-				       mlx5_mkey_variant(umrwr->mkey));
+	MLX5_SET64(mkc, seg, start_addr, umrwr->virt_addr);
+	MLX5_SET64(mkc, seg, len, umrwr->length);
+	MLX5_SET(mkc, seg, log_page_size, umrwr->page_shift);
+	MLX5_SET(mkc, seg, qpn, 0xffffff);
+	MLX5_SET(mkc, seg, mkey_7_0, mlx5_mkey_variant(umrwr->mkey));
 }
 
 static void set_reg_data_seg(struct mlx5_wqe_data_seg *dseg,
 			     struct mlx5_ib_mr *mr,
 			     struct mlx5_ib_pd *pd)
 {
-	int bcount = mr->desc_size * (mr->ndescs + mr->meta_ndescs);
+	int bcount = mr->desc_size * (mr->mmkey.ndescs + mr->meta_ndescs);
 
 	dseg->addr = cpu_to_be64(mr->desc_map);
 	dseg->byte_count = cpu_to_be32(ALIGN(bcount, 64));
@@ -825,18 +861,19 @@ static int set_reg_wr(struct mlx5_ib_qp *qp,
 	struct mlx5_ib_mr *mr = to_mmr(wr->mr);
 	struct mlx5_ib_pd *pd = to_mpd(qp->ibqp.pd);
 	struct mlx5_ib_dev *dev = to_mdev(pd->ibpd.device);
-	int mr_list_size = (mr->ndescs + mr->meta_ndescs) * mr->desc_size;
+	int mr_list_size = (mr->mmkey.ndescs + mr->meta_ndescs) * mr->desc_size;
 	bool umr_inline = mr_list_size <= MLX5_IB_SQ_UMR_INLINE_THRESHOLD;
 	bool atomic = wr->access & IB_ACCESS_REMOTE_ATOMIC;
 	u8 flags = 0;
 
-	if (!mlx5_ib_can_use_umr(dev, atomic, wr->access)) {
-		mlx5_ib_warn(to_mdev(qp->ibqp.device),
-			     "Fast update of %s for MR is disabled\n",
-			     (MLX5_CAP_GEN(dev->mdev,
-					   umr_modify_entity_size_disabled)) ?
-				     "entity size" :
-				     "atomic access");
+	/* Matches access in mlx5_set_umr_free_mkey().
+	 * Relaxed Ordering is set implicitly in mlx5_set_umr_free_mkey() and
+	 * kernel ULPs are not aware of it, so we don't set it here.
+	 */
+	if (!mlx5_ib_can_reconfig_with_umr(dev, 0, wr->access)) {
+		mlx5_ib_warn(
+			to_mdev(qp->ibqp.device),
+			"Fast update for MR access flags is not possible\n");
 		return -EINVAL;
 	}
 
@@ -1074,7 +1111,7 @@ static int handle_reg_mr_integrity(struct mlx5_ib_dev *dev,
 		memset(&pa_pi_mr, 0, sizeof(struct mlx5_ib_mr));
 		/* No UMR, use local_dma_lkey */
 		pa_pi_mr.ibmr.lkey = mr->ibmr.pd->local_dma_lkey;
-		pa_pi_mr.ndescs = mr->ndescs;
+		pa_pi_mr.mmkey.ndescs = mr->mmkey.ndescs;
 		pa_pi_mr.data_length = mr->data_length;
 		pa_pi_mr.data_iova = mr->data_iova;
 		if (mr->meta_ndescs) {
@@ -1224,14 +1261,13 @@ static int handle_qpt_reg_umr(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 
 	qp->sq.wr_data[idx] = MLX5_IB_WR_UMR;
 	(*ctrl)->imm = cpu_to_be32(umr_wr(wr)->mkey);
-	err = set_reg_umr_segment(dev, *seg, wr,
-				  !!(MLX5_CAP_GEN(dev->mdev, atomic)));
+	err = set_reg_umr_segment(dev, *seg, wr);
 	if (unlikely(err))
 		goto out;
 	*seg += sizeof(struct mlx5_wqe_umr_ctrl_seg);
 	*size += sizeof(struct mlx5_wqe_umr_ctrl_seg) / 16;
 	handle_post_send_edge(&qp->sq, seg, *size, cur_edge);
-	set_reg_mkey_segment(*seg, wr);
+	set_reg_mkey_segment(dev, *seg, wr);
 	*seg += sizeof(struct mlx5_mkey_seg);
 	*size += sizeof(struct mlx5_mkey_seg) / 16;
 	handle_post_send_edge(&qp->sq, seg, *size, cur_edge);
@@ -1245,11 +1281,11 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 	struct mlx5_wqe_ctrl_seg *ctrl = NULL;  /* compiler warning */
 	struct mlx5_ib_dev *dev = to_mdev(ibqp->device);
 	struct mlx5_core_dev *mdev = dev->mdev;
-	struct mlx5_ib_qp *qp;
+	struct mlx5_ib_qp *qp = to_mqp(ibqp);
 	struct mlx5_wqe_xrc_seg *xrc;
 	struct mlx5_bf *bf;
 	void *cur_edge;
-	int uninitialized_var(size);
+	int size;
 	unsigned long flags;
 	unsigned int idx;
 	int err = 0;
@@ -1266,10 +1302,9 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 		return -EIO;
 	}
 
-	if (unlikely(ibqp->qp_type == IB_QPT_GSI))
+	if (qp->type == IB_QPT_GSI)
 		return mlx5_ib_gsi_post_send(ibqp, wr, bad_wr);
 
-	qp = to_mqp(ibqp);
 	bf = &qp->bf;
 
 	spin_lock_irqsave(&qp->sq.lock, flags);
@@ -1314,7 +1349,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 			}
 		}
 
-		switch (ibqp->qp_type) {
+		switch (qp->type) {
 		case IB_QPT_XRC_INI:
 			xrc = seg;
 			seg += sizeof(*xrc);
@@ -1336,7 +1371,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 			handle_qpt_uc(wr, &seg, &size);
 			break;
 		case IB_QPT_SMI:
-			if (unlikely(!mdev->port_caps[qp->port - 1].has_smi)) {
+			if (unlikely(!dev->port_caps[qp->port - 1].has_smi)) {
 				mlx5_ib_warn(dev, "Send SMP MADs is not allowed\n");
 				err = -EPERM;
 				*bad_wr = wr;
@@ -1443,7 +1478,7 @@ int mlx5_ib_post_recv(struct ib_qp *ibqp, const struct ib_recv_wr *wr,
 		return -EIO;
 	}
 
-	if (unlikely(ibqp->qp_type == IB_QPT_GSI))
+	if (qp->type == IB_QPT_GSI)
 		return mlx5_ib_gsi_post_recv(ibqp, wr, bad_wr);
 
 	spin_lock_irqsave(&qp->rq.lock, flags);

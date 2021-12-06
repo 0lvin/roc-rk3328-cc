@@ -53,11 +53,13 @@ struct perf_tool {
 			lost_samples,
 			aux,
 			itrace_start,
+			aux_output_hw_id,
 			context_switch,
 			throttle,
 			unthrottle,
 			ksymbol,
-			bpf;
+			bpf,
+			text_poke;
 
 	event_attr_op	attr;
 	event_attr_op	event_update;

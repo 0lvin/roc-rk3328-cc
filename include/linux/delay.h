@@ -16,10 +16,10 @@
  *  3. CPU clock rate changes.
  *
  * Please see this thread:
- *   http://lists.openwall.net/linux-kernel/2011/01/09/56
+ *   https://lists.openwall.net/linux-kernel/2011/01/09/56
  */
 
-#include <linux/kernel.h>
+#include <linux/math.h>
 
 extern unsigned long loops_per_jiffy;
 

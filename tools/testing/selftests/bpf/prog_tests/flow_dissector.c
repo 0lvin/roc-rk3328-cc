@@ -458,9 +458,9 @@ static int init_prog_array(struct bpf_object *obj, struct bpf_map *prog_array)
 		return -1;
 
 	for (i = 0; i < bpf_map__def(prog_array)->max_entries; i++) {
-		snprintf(prog_name, sizeof(prog_name), "flow_dissector/%i", i);
+		snprintf(prog_name, sizeof(prog_name), "flow_dissector_%d", i);
 
-		prog = bpf_object__find_program_by_title(obj, prog_name);
+		prog = bpf_object__find_program_by_name(obj, prog_name);
 		if (!prog)
 			return -1;
 
@@ -541,7 +541,7 @@ static void test_skb_less_link_create(struct bpf_flow *skel, int tap_fd)
 		return;
 
 	link = bpf_program__attach_netns(skel->progs._dissect, net_fd);
-	if (CHECK(IS_ERR(link), "attach_netns", "err %ld\n", PTR_ERR(link)))
+	if (!ASSERT_OK_PTR(link, "attach_netns"))
 		goto out_close;
 
 	run_tests_skb_less(tap_fd, skel->maps.last_dissection);
@@ -591,7 +591,7 @@ void test_flow_dissector(void)
 		CHECK_ATTR(tattr.data_size_out != sizeof(flow_keys) ||
 			   err || tattr.retval != 1,
 			   tests[i].name,
-			   "err %d errno %d retval %d duration %d size %u/%lu\n",
+			   "err %d errno %d retval %d duration %d size %u/%zu\n",
 			   err, errno, tattr.retval, tattr.duration,
 			   tattr.data_size_out, sizeof(flow_keys));
 		CHECK_FLOW_KEYS(tests[i].name, flow_keys, tests[i].keys);

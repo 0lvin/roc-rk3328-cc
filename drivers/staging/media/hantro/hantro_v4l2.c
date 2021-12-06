@@ -40,7 +40,7 @@ hantro_get_formats(const struct hantro_ctx *ctx, unsigned int *num_fmts)
 {
 	const struct hantro_fmt *formats;
 
-	if (hantro_is_encoder_ctx(ctx)) {
+	if (ctx->is_encoder) {
 		formats = ctx->dev->variant->enc_fmts;
 		*num_fmts = ctx->dev->variant->num_enc_fmts;
 	} else {
@@ -55,7 +55,9 @@ static const struct hantro_fmt *
 hantro_get_postproc_formats(const struct hantro_ctx *ctx,
 			    unsigned int *num_fmts)
 {
-	if (hantro_is_encoder_ctx(ctx)) {
+	struct hantro_dev *vpu = ctx->dev;
+
+	if (ctx->is_encoder || !vpu->variant->postproc_fmts) {
 		*num_fmts = 0;
 		return NULL;
 	}
@@ -158,7 +160,7 @@ static int vidioc_enum_fmt(struct file *file, void *priv,
 	 *    not MODE_NONE.
 	 *  - on the output side we want to filter out all MODE_NONE formats.
 	 */
-	skip_mode_none = capture == hantro_is_encoder_ctx(ctx);
+	skip_mode_none = capture == ctx->is_encoder;
 
 	formats = hantro_get_formats(ctx, &num_fmts);
 	for (i = 0; i < num_fmts; i++) {
@@ -237,10 +239,10 @@ static int hantro_try_fmt(const struct hantro_ctx *ctx,
 			  enum v4l2_buf_type type)
 {
 	const struct hantro_fmt *fmt, *vpu_fmt;
-	bool capture = !V4L2_TYPE_IS_OUTPUT(type);
+	bool capture = V4L2_TYPE_IS_CAPTURE(type);
 	bool coded;
 
-	coded = capture == hantro_is_encoder_ctx(ctx);
+	coded = capture == ctx->is_encoder;
 
 	vpu_debug(4, "trying format %c%c%c%c\n",
 		  (pix_mp->pixelformat & 0x7f),
@@ -257,7 +259,7 @@ static int hantro_try_fmt(const struct hantro_ctx *ctx,
 	if (coded) {
 		pix_mp->num_planes = 1;
 		vpu_fmt = fmt;
-	} else if (hantro_is_encoder_ctx(ctx)) {
+	} else if (ctx->is_encoder) {
 		vpu_fmt = ctx->vpu_dst_fmt;
 	} else {
 		vpu_fmt = ctx->vpu_src_fmt;
@@ -316,7 +318,7 @@ hantro_reset_fmt(struct v4l2_pix_format_mplane *fmt,
 
 	fmt->pixelformat = vpu_fmt->fourcc;
 	fmt->field = V4L2_FIELD_NONE;
-	fmt->colorspace = V4L2_COLORSPACE_JPEG,
+	fmt->colorspace = V4L2_COLORSPACE_JPEG;
 	fmt->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
 	fmt->quantization = V4L2_QUANTIZATION_DEFAULT;
 	fmt->xfer_func = V4L2_XFER_FUNC_DEFAULT;
@@ -330,7 +332,7 @@ hantro_reset_encoded_fmt(struct hantro_ctx *ctx)
 
 	vpu_fmt = hantro_get_default_fmt(ctx, true);
 
-	if (hantro_is_encoder_ctx(ctx)) {
+	if (ctx->is_encoder) {
 		ctx->vpu_dst_fmt = vpu_fmt;
 		fmt = &ctx->dst_fmt;
 	} else {
@@ -341,7 +343,7 @@ hantro_reset_encoded_fmt(struct hantro_ctx *ctx)
 	hantro_reset_fmt(fmt, vpu_fmt);
 	fmt->width = vpu_fmt->frmsize.min_width;
 	fmt->height = vpu_fmt->frmsize.min_height;
-	if (hantro_is_encoder_ctx(ctx))
+	if (ctx->is_encoder)
 		hantro_set_fmt_cap(ctx, fmt);
 	else
 		hantro_set_fmt_out(ctx, fmt);
@@ -355,7 +357,7 @@ hantro_reset_raw_fmt(struct hantro_ctx *ctx)
 
 	raw_vpu_fmt = hantro_get_default_fmt(ctx, false);
 
-	if (hantro_is_encoder_ctx(ctx)) {
+	if (ctx->is_encoder) {
 		ctx->vpu_src_fmt = raw_vpu_fmt;
 		raw_fmt = &ctx->src_fmt;
 		encoded_fmt = &ctx->dst_fmt;
@@ -367,8 +369,8 @@ hantro_reset_raw_fmt(struct hantro_ctx *ctx)
 
 	hantro_reset_fmt(raw_fmt, raw_vpu_fmt);
 	raw_fmt->width = encoded_fmt->width;
-	raw_fmt->width = encoded_fmt->width;
-	if (hantro_is_encoder_ctx(ctx))
+	raw_fmt->height = encoded_fmt->height;
+	if (ctx->is_encoder)
 		hantro_set_fmt_out(ctx, raw_fmt);
 	else
 		hantro_set_fmt_cap(ctx, raw_fmt);
@@ -390,6 +392,7 @@ hantro_update_requires_request(struct hantro_ctx *ctx, u32 fourcc)
 	case V4L2_PIX_FMT_MPEG2_SLICE:
 	case V4L2_PIX_FMT_VP8_FRAME:
 	case V4L2_PIX_FMT_H264_SLICE:
+	case V4L2_PIX_FMT_HEVC_SLICE:
 		ctx->fh.m2m_ctx->out_q_ctx.q.requires_requests = true;
 		break;
 	default:
@@ -409,7 +412,7 @@ static int hantro_set_fmt_out(struct hantro_ctx *ctx,
 	if (ret)
 		return ret;
 
-	if (!hantro_is_encoder_ctx(ctx)) {
+	if (!ctx->is_encoder) {
 		struct vb2_queue *peer_vq;
 
 		/*
@@ -450,7 +453,7 @@ static int hantro_set_fmt_out(struct hantro_ctx *ctx,
 	 * Note that hantro_reset_raw_fmt() also propagates size
 	 * changes to the raw format.
 	 */
-	if (!hantro_is_encoder_ctx(ctx))
+	if (!ctx->is_encoder)
 		hantro_reset_raw_fmt(ctx);
 
 	/* Colorimetry information are always propagated. */
@@ -479,7 +482,7 @@ static int hantro_set_fmt_cap(struct hantro_ctx *ctx,
 	if (vb2_is_busy(vq))
 		return -EBUSY;
 
-	if (hantro_is_encoder_ctx(ctx)) {
+	if (ctx->is_encoder) {
 		struct vb2_queue *peer_vq;
 
 		/*
@@ -512,7 +515,7 @@ static int hantro_set_fmt_cap(struct hantro_ctx *ctx,
 	 * Note that hantro_reset_raw_fmt() also propagates size
 	 * changes to the raw format.
 	 */
-	if (hantro_is_encoder_ctx(ctx))
+	if (ctx->is_encoder)
 		hantro_reset_raw_fmt(ctx);
 
 	/* Colorimetry information are always propagated. */
@@ -639,7 +642,14 @@ static int hantro_buf_prepare(struct vb2_buffer *vb)
 	ret = hantro_buf_plane_check(vb, pix_fmt);
 	if (ret)
 		return ret;
-	vb2_set_plane_payload(vb, 0, pix_fmt->plane_fmt[0].sizeimage);
+	/*
+	 * Buffer's bytesused must be written by driver for CAPTURE buffers.
+	 * (for OUTPUT buffers, if userspace passes 0 bytesused, v4l2-core sets
+	 * it to buffer length).
+	 */
+	if (V4L2_TYPE_IS_CAPTURE(vq->type))
+		vb2_set_plane_payload(vb, 0, pix_fmt->plane_fmt[0].sizeimage);
+
 	return 0;
 }
 
@@ -655,7 +665,7 @@ static bool hantro_vq_is_coded(struct vb2_queue *q)
 {
 	struct hantro_ctx *ctx = vb2_get_drv_priv(q);
 
-	return hantro_is_encoder_ctx(ctx) != V4L2_TYPE_IS_OUTPUT(q->type);
+	return ctx->is_encoder != V4L2_TYPE_IS_OUTPUT(q->type);
 }
 
 static int hantro_start_streaming(struct vb2_queue *q, unsigned int count)

@@ -76,7 +76,7 @@ static int gr3d_init(struct host1x_client *client)
 detach:
 	host1x_client_iommu_detach(client);
 free:
-	host1x_syncpt_free(client->syncpts[0]);
+	host1x_syncpt_put(client->syncpts[0]);
 put:
 	host1x_channel_put(gr3d->channel);
 	return err;
@@ -94,7 +94,7 @@ static int gr3d_exit(struct host1x_client *client)
 		return err;
 
 	host1x_client_iommu_detach(client);
-	host1x_syncpt_free(client->syncpts[0]);
+	host1x_syncpt_put(client->syncpts[0]);
 	host1x_channel_put(gr3d->channel);
 
 	return 0;
@@ -381,10 +381,12 @@ static int gr3d_remove(struct platform_device *pdev)
 	}
 
 	if (gr3d->clk_secondary) {
+		reset_control_assert(gr3d->rst_secondary);
 		tegra_powergate_power_off(TEGRA_POWERGATE_3D1);
 		clk_disable_unprepare(gr3d->clk_secondary);
 	}
 
+	reset_control_assert(gr3d->rst);
 	tegra_powergate_power_off(TEGRA_POWERGATE_3D);
 	clk_disable_unprepare(gr3d->clk);
 

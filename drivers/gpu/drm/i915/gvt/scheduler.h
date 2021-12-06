@@ -36,6 +36,11 @@
 #ifndef _GVT_SCHEDULER_H_
 #define _GVT_SCHEDULER_H_
 
+#include "gt/intel_engine_types.h"
+
+#include "execlist.h"
+#include "interrupt.h"
+
 struct intel_gvt_workload_scheduler {
 	struct intel_vgpu *current_vgpu;
 	struct intel_vgpu *next_vgpu;
@@ -124,8 +129,6 @@ struct intel_vgpu_shadow_bb {
 	struct i915_vma *vma;
 	void *va;
 	u32 *bb_start_cmd_va;
-	unsigned int clflush;
-	bool accessing;
 	unsigned long bb_offset;
 	bool ppgtt;
 };

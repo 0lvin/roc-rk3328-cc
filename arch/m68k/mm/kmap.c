@@ -17,10 +17,9 @@
 #include <linux/vmalloc.h>
 
 #include <asm/setup.h>
-#include <asm/segment.h>
 #include <asm/page.h>
-#include <asm/pgalloc.h>
 #include <asm/io.h>
+#include <asm/tlbflush.h>
 
 #undef DEBUG
 

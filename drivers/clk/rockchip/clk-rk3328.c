@@ -130,9 +130,10 @@ static struct rockchip_cpuclk_rate_table rk3328_cpuclk_rates[] __initdata = {
 };
 
 static const struct rockchip_cpuclk_reg_data rk3328_cpuclk_data = {
-	.core_reg = RK3328_CLKSEL_CON(0),
-	.div_core_shift = 0,
-	.div_core_mask = 0x1f,
+	.core_reg[0] = RK3328_CLKSEL_CON(0),
+	.div_core_shift[0] = 0,
+	.div_core_mask[0] = 0x1f,
+	.num_cores = 1,
 	.mux_core_alt = 1,
 	.mux_core_main = 3,
 	.mux_core_shift = 6,
@@ -140,7 +141,6 @@ static const struct rockchip_cpuclk_reg_data rk3328_cpuclk_data = {
 };
 
 PNAME(mux_pll_p)		= { "xin24m" };
-PNAME(mux_hdmiphy_gpll_p)	= { "hdmiphy", "gpll" };
 
 PNAME(mux_2plls_p)		= { "cpll", "gpll" };
 PNAME(mux_gpll_cpll_p)		= { "gpll", "cpll" };
@@ -315,15 +315,14 @@ static struct rockchip_clk_branch rk3328_clk_branches[] __initdata = {
 			RK3328_CLKGATE_CON(14), 1, GFLAGS),
 
 	/* PD_DDR */
-	COMPOSITE_DDRCLK(SCLK_DDRCLK, "sclk_ddrc", mux_ddrphy_p, 0,
-			 RK3328_CLKSEL_CON(3), 8, 2, 0, 3,
-			 ROCKCHIP_DDRCLK_SIP_V2),
-
-	GATE(0, "clk_ddrmsch", "sclk_ddrc", CLK_IGNORE_UNUSED,
+	COMPOSITE(0, "clk_ddr", mux_ddrphy_p, CLK_IGNORE_UNUSED,
+			RK3328_CLKSEL_CON(3), 8, 2, MFLAGS, 0, 3, DFLAGS | CLK_DIVIDER_POWER_OF_TWO,
+			RK3328_CLKGATE_CON(0), 4, GFLAGS),
+	GATE(0, "clk_ddrmsch", "clk_ddr", CLK_IGNORE_UNUSED,
 			RK3328_CLKGATE_CON(18), 6, GFLAGS),
-	GATE(0, "clk_ddrupctl", "sclk_ddrc", CLK_IGNORE_UNUSED,
+	GATE(0, "clk_ddrupctl", "clk_ddr", CLK_IGNORE_UNUSED,
 			RK3328_CLKGATE_CON(18), 5, GFLAGS),
-	GATE(0, "aclk_ddrupctl", "sclk_ddrc", CLK_IGNORE_UNUSED,
+	GATE(0, "aclk_ddrupctl", "clk_ddr", CLK_IGNORE_UNUSED,
 			RK3328_CLKGATE_CON(18), 4, GFLAGS),
 	GATE(0, "clk_ddrmon", "xin24m", CLK_IGNORE_UNUSED,
 			RK3328_CLKGATE_CON(0), 6, GFLAGS),
@@ -585,7 +584,7 @@ static struct rockchip_clk_branch rk3328_clk_branches[] __initdata = {
 	GATE(SCLK_HDMI_SFC, "sclk_hdmi_sfc", "xin24m", 0,
 			RK3328_CLKGATE_CON(5), 4, GFLAGS),
 
-	COMPOSITE_NODIV(0, "clk_cif_src", mux_hdmiphy_gpll_p, 0,
+	COMPOSITE_NODIV(0, "clk_cif_src", mux_2plls_p, 0,
 			RK3328_CLKSEL_CON(42), 7, 1, MFLAGS,
 			RK3328_CLKGATE_CON(5), 3, GFLAGS),
 	COMPOSITE_NOGATE(SCLK_CIF_OUT, "clk_cif_out", mux_sclk_cif_p, CLK_SET_RATE_PARENT,
@@ -713,7 +712,7 @@ static struct rockchip_clk_branch rk3328_clk_branches[] __initdata = {
 	GATE(0, "aclk_vio_niu", "aclk_vio_pre", 0, RK3328_CLKGATE_CON(22), 2, GFLAGS),
 
 	GATE(HCLK_VOP, "hclk_vop", "hclk_vio_pre", 0, RK3328_CLKGATE_CON(21), 3, GFLAGS),
-	GATE(0, "hclk_vop_niu", "hclk_vio_pre", CLK_IGNORE_UNUSED, RK3328_CLKGATE_CON(21), 5, GFLAGS),
+	GATE(0, "hclk_vop_niu", "hclk_vio_pre", 0, RK3328_CLKGATE_CON(21), 5, GFLAGS),
 	GATE(HCLK_IEP, "hclk_iep", "hclk_vio_pre", 0, RK3328_CLKGATE_CON(21), 7, GFLAGS),
 	GATE(HCLK_CIF, "hclk_cif", "hclk_vio_pre", 0, RK3328_CLKGATE_CON(21), 9, GFLAGS),
 	GATE(HCLK_RGA, "hclk_rga", "hclk_vio_pre", 0, RK3328_CLKGATE_CON(21), 11, GFLAGS),
@@ -810,22 +809,22 @@ static struct rockchip_clk_branch rk3328_clk_branches[] __initdata = {
 	MMC(SCLK_SDMMC_DRV, "sdmmc_drv", "clk_sdmmc",
 	    RK3328_SDMMC_CON0, 1),
 	MMC(SCLK_SDMMC_SAMPLE, "sdmmc_sample", "clk_sdmmc",
-	    RK3328_SDMMC_CON1, 0),
+	    RK3328_SDMMC_CON1, 1),
 
 	MMC(SCLK_SDIO_DRV, "sdio_drv", "clk_sdio",
 	    RK3328_SDIO_CON0, 1),
 	MMC(SCLK_SDIO_SAMPLE, "sdio_sample", "clk_sdio",
-	    RK3328_SDIO_CON1, 0),
+	    RK3328_SDIO_CON1, 1),
 
 	MMC(SCLK_EMMC_DRV, "emmc_drv", "clk_emmc",
 	    RK3328_EMMC_CON0, 1),
 	MMC(SCLK_EMMC_SAMPLE, "emmc_sample", "clk_emmc",
-	    RK3328_EMMC_CON1, 0),
+	    RK3328_EMMC_CON1, 1),
 
 	MMC(SCLK_SDMMC_EXT_DRV, "sdmmc_ext_drv", "clk_sdmmc_ext",
 	    RK3328_SDMMC_EXT_CON0, 1),
 	MMC(SCLK_SDMMC_EXT_SAMPLE, "sdmmc_ext_sample", "clk_sdmmc_ext",
-	    RK3328_SDMMC_EXT_CON1, 0),
+	    RK3328_SDMMC_EXT_CON1, 1),
 };
 
 static const char *const rk3328_critical_clocks[] __initconst = {

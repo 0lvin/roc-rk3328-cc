@@ -95,11 +95,6 @@ struct mipi_dbi_dev {
 	struct drm_display_mode mode;
 
 	/**
-	 * @enabled: Pipeline is enabled
-	 */
-	bool enabled;
-
-	/**
 	 * @tx_buf: Buffer used for transfer (copy clip rect area)
 	 */
 	u16 *tx_buf;
@@ -177,7 +172,7 @@ int mipi_dbi_buf_copy(void *dst, struct drm_framebuffer *fb,
  * mipi_dbi_command - MIPI DCS command with optional parameter(s)
  * @dbi: MIPI DBI structure
  * @cmd: Command
- * @seq...: Optional parameter(s)
+ * @seq: Optional parameter(s)
  *
  * Send MIPI DCS command to the controller. Use mipi_dbi_command_read() for
  * get/read.
@@ -188,7 +183,12 @@ int mipi_dbi_buf_copy(void *dst, struct drm_framebuffer *fb,
 #define mipi_dbi_command(dbi, cmd, seq...) \
 ({ \
 	const u8 d[] = { seq }; \
-	mipi_dbi_command_stackbuf(dbi, cmd, d, ARRAY_SIZE(d)); \
+	struct device *dev = &(dbi)->spi->dev;	\
+	int ret; \
+	ret = mipi_dbi_command_stackbuf(dbi, cmd, d, ARRAY_SIZE(d)); \
+	if (ret) \
+		dev_err_ratelimited(dev, "error %d when sending command %#02x\n", ret, cmd); \
+	ret; \
 })
 
 #ifdef CONFIG_DEBUG_FS

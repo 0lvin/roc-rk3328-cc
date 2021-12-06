@@ -69,8 +69,7 @@ int lima_heap_alloc(struct lima_bo *bo, struct lima_vm *vm)
 		return ret;
 
 	if (bo->base.sgt) {
-		dma_unmap_sg(dev, bo->base.sgt->sgl,
-			     bo->base.sgt->nents, DMA_BIDIRECTIONAL);
+		dma_unmap_sgtable(dev, bo->base.sgt, DMA_BIDIRECTIONAL, 0);
 		sg_free_table(bo->base.sgt);
 	} else {
 		bo->base.sgt = kmalloc(sizeof(*bo->base.sgt), GFP_KERNEL);
@@ -80,7 +79,13 @@ int lima_heap_alloc(struct lima_bo *bo, struct lima_vm *vm)
 		}
 	}
 
-	dma_map_sg(dev, sgt.sgl, sgt.nents, DMA_BIDIRECTIONAL);
+	ret = dma_map_sgtable(dev, &sgt, DMA_BIDIRECTIONAL, 0);
+	if (ret) {
+		sg_free_table(&sgt);
+		kfree(bo->base.sgt);
+		bo->base.sgt = NULL;
+		return ret;
+	}
 
 	*bo->base.sgt = sgt;
 
@@ -134,7 +139,7 @@ int lima_gem_create_handle(struct drm_device *dev, struct drm_file *file,
 
 out:
 	/* drop reference from allocate - handle holds it now */
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 
 	return err;
 }
@@ -177,14 +182,14 @@ static int lima_gem_pin(struct drm_gem_object *obj)
 	return drm_gem_shmem_pin(obj);
 }
 
-static void *lima_gem_vmap(struct drm_gem_object *obj)
+static int lima_gem_vmap(struct drm_gem_object *obj, struct dma_buf_map *map)
 {
 	struct lima_bo *bo = to_lima_bo(obj);
 
 	if (bo->heap_size)
-		return ERR_PTR(-EINVAL);
+		return -EINVAL;
 
-	return drm_gem_shmem_vmap(obj);
+	return drm_gem_shmem_vmap(obj, map);
 }
 
 static int lima_gem_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma)
@@ -220,7 +225,7 @@ struct drm_gem_object *lima_gem_create_object(struct drm_device *dev, size_t siz
 
 	mutex_init(&bo->lock);
 	INIT_LIST_HEAD(&bo->va);
-
+	bo->base.map_wc = true;
 	bo->base.base.funcs = &lima_gem_funcs;
 
 	return &bo->base.base;
@@ -243,7 +248,7 @@ int lima_gem_get_info(struct drm_file *file, u32 handle, u32 *va, u64 *offset)
 
 	*offset = drm_vma_node_offset_addr(&obj->vma_node);
 
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 	return 0;
 }
 
@@ -262,7 +267,9 @@ static int lima_gem_sync_bo(struct lima_sched_task *task, struct lima_bo *bo,
 	if (explicit)
 		return 0;
 
-	return drm_gem_fence_array_add_implicit(&task->deps, &bo->base.base, write);
+	return drm_sched_job_add_implicit_dependencies(&task->base,
+						       &bo->base.base,
+						       write);
 }
 
 static int lima_gem_add_deps(struct drm_file *file, struct lima_submit *submit)
@@ -280,7 +287,7 @@ static int lima_gem_add_deps(struct drm_file *file, struct lima_submit *submit)
 		if (err)
 			return err;
 
-		err = drm_gem_fence_array_add(&submit->task->deps, fence);
+		err = drm_sched_job_add_dependency(&submit->task->base, fence);
 		if (err) {
 			dma_fence_put(fence);
 			return err;
@@ -323,7 +330,7 @@ int lima_gem_submit(struct drm_file *file, struct lima_submit *submit)
 		 */
 		err = lima_vm_bo_add(vm, bo, false);
 		if (err) {
-			drm_gem_object_put_unlocked(obj);
+			drm_gem_object_put(obj);
 			goto err_out0;
 		}
 
@@ -354,8 +361,7 @@ int lima_gem_submit(struct drm_file *file, struct lima_submit *submit)
 			goto err_out2;
 	}
 
-	fence = lima_sched_context_queue_task(
-		submit->ctx->context + submit->pipe, submit->task);
+	fence = lima_sched_context_queue_task(submit->task);
 
 	for (i = 0; i < submit->nr_bos; i++) {
 		if (submit->bos[i].flags & LIMA_SUBMIT_BO_WRITE)
@@ -368,7 +374,7 @@ int lima_gem_submit(struct drm_file *file, struct lima_submit *submit)
 				    submit->nr_bos, &ctx);
 
 	for (i = 0; i < submit->nr_bos; i++)
-		drm_gem_object_put_unlocked(&bos[i]->base.base);
+		drm_gem_object_put(&bos[i]->base.base);
 
 	if (out_sync) {
 		drm_syncobj_replace_fence(out_sync, fence);
@@ -389,7 +395,7 @@ err_out0:
 		if (!bos[i])
 			break;
 		lima_vm_bo_del(vm, bos[i]);
-		drm_gem_object_put_unlocked(&bos[i]->base.base);
+		drm_gem_object_put(&bos[i]->base.base);
 	}
 	if (out_sync)
 		drm_syncobj_put(out_sync);

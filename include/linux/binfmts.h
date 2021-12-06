@@ -45,17 +45,18 @@ struct linux_binprm {
 #ifdef __alpha__
 	unsigned int taso:1;
 #endif
-	struct file * executable; /* Executable to pass to the interpreter */
-	struct file * interpreter;
-	struct file * file;
+	struct file *executable; /* Executable to pass to the interpreter */
+	struct file *interpreter;
+	struct file *file;
 	struct cred *cred;	/* new credentials */
 	int unsafe;		/* how unsafe this exec is (mask of LSM_UNSAFE_*) */
 	unsigned int per_clear;	/* bits to clear in current->personality */
 	int argc, envc;
-	const char * filename;	/* Name of binary as seen by procps */
-	const char * interp;	/* Name of the binary really executed. Most
+	const char *filename;	/* Name of binary as seen by procps */
+	const char *interp;	/* Name of the binary really executed. Most
 				   of the time same as filename, but could be
 				   different for binfmt_{misc,script} */
+	const char *fdpath;	/* generated filename for execveat */
 	unsigned interp_flags;
 	int execfd;		/* File descriptor of the executable */
 	unsigned long loader, exec;
@@ -72,6 +73,10 @@ struct linux_binprm {
 #define BINPRM_FLAGS_PATH_INACCESSIBLE_BIT 2
 #define BINPRM_FLAGS_PATH_INACCESSIBLE (1 << BINPRM_FLAGS_PATH_INACCESSIBLE_BIT)
 
+/* preserve argv0 for the interpreter  */
+#define BINPRM_FLAGS_PRESERVE_ARGV0_BIT 3
+#define BINPRM_FLAGS_PRESERVE_ARGV0 (1 << BINPRM_FLAGS_PRESERVE_ARGV0_BIT)
+
 /* Function parameter for binfmt->coredump */
 struct coredump_params {
 	const kernel_siginfo_t *siginfo;
@@ -81,6 +86,7 @@ struct coredump_params {
 	unsigned long mm_flags;
 	loff_t written;
 	loff_t pos;
+	loff_t to_skip;
 };
 
 /*
@@ -134,13 +140,7 @@ int copy_string_kernel(const char *arg, struct linux_binprm *bprm);
 extern void set_binfmt(struct linux_binfmt *new);
 extern ssize_t read_code(struct file *, unsigned long, loff_t, size_t);
 
-extern int do_execve(struct filename *,
-		     const char __user * const __user *,
-		     const char __user * const __user *);
-extern int do_execveat(int, struct filename *,
-		       const char __user * const __user *,
-		       const char __user * const __user *,
-		       int);
-int do_execve_file(struct file *file, void *__argv, void *__envp);
+int kernel_execve(const char *filename,
+		  const char *const *argv, const char *const *envp);
 
 #endif /* _LINUX_BINFMTS_H */

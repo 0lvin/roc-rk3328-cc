@@ -2,13 +2,12 @@
 /*
  * SPI interface.
  *
- * Copyright (c) 2017-2019, Silicon Laboratories, Inc.
+ * Copyright (c) 2017-2020, Silicon Laboratories, Inc.
  * Copyright (c) 2011, Sagrad Inc.
  * Copyright (c) 2010, ST-Ericsson
  */
 #include <linux/module.h>
 #include <linux/delay.h>
-#include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
 #include <linux/spi/spi.h>
 #include <linux/interrupt.h>
@@ -20,10 +19,6 @@
 #include "hwio.h"
 #include "main.h"
 #include "bh.h"
-
-static int gpio_reset = -2;
-module_param(gpio_reset, int, 0644);
-MODULE_PARM_DESC(gpio_reset, "gpio number for reset. -1 for none.");
 
 #define SET_WRITE 0x7FFF        /* usage: and operation */
 #define SET_READ 0x8000         /* usage: or operation */
@@ -43,10 +38,9 @@ struct wfx_spi_priv {
 	bool need_swab;
 };
 
-/*
- * WFx chip read data 16bits at time and place them directly into (little
- * endian) CPU register. So, chip expect byte order like "B1 B0 B3 B2" (while
- * LE is "B0 B1 B2 B3" and BE is "B3 B2 B1 B0")
+/* The chip reads 16bits of data at time and place them directly into (little
+ * endian) CPU register. So, the chip expects bytes order to be "B1 B0 B3 B2"
+ * (while LE is "B0 B1 B2 B3" and BE is "B3 B2 B1 B0")
  *
  * A little endian host with bits_per_word == 16 should do the right job
  * natively. The code below to support big endian host and commonly used SPI
@@ -91,7 +85,7 @@ static int wfx_spi_copy_to_io(void *priv, unsigned int addr,
 {
 	struct wfx_spi_priv *bus = priv;
 	u16 regaddr = (addr << 12) | (count / 2);
-	// FIXME: use a bounce buffer
+	/* FIXME: use a bounce buffer */
 	u16 *src16 = (void *)src;
 	int ret, i;
 	struct spi_message      m;
@@ -109,8 +103,9 @@ static int wfx_spi_copy_to_io(void *priv, unsigned int addr,
 
 	cpu_to_le16s(&regaddr);
 
-	// Register address and CONFIG content always use 16bit big endian
-	// ("BADC" order)
+	/* Register address and CONFIG content always use 16bit big endian
+	 * ("BADC" order)
+	 */
 	if (bus->need_swab)
 		swab16s(&regaddr);
 	if (bus->need_swab && addr == WFX_REG_CONFIG)
@@ -168,7 +163,8 @@ static int wfx_spi_irq_unsubscribe(void *priv)
 
 static size_t wfx_spi_align_size(void *priv, size_t size)
 {
-	// Most of SPI controllers avoid DMA if buffer size is not 32bit aligned
+	/* Most of SPI controllers avoid DMA if buffer size is not 32bit aligned
+	 */
 	return ALIGN(size, 4);
 }
 
@@ -192,7 +188,7 @@ static int wfx_spi_probe(struct spi_device *func)
 	ret = spi_setup(func);
 	if (ret)
 		return ret;
-	// Trace below is also displayed by spi_setup() if compiled with DEBUG
+	/* Trace below is also displayed by spi_setup() if compiled with DEBUG */
 	dev_dbg(&func->dev, "SPI params: CS=%d, mode=%d bits/word=%d speed=%d\n",
 		func->chip_select, func->mode, func->bits_per_word,
 		func->max_speed_hz);
@@ -211,10 +207,15 @@ static int wfx_spi_probe(struct spi_device *func)
 		bus->need_swab = true;
 	spi_set_drvdata(func, bus);
 
-	bus->gpio_reset = wfx_get_gpio(&func->dev, gpio_reset, "reset");
+	bus->gpio_reset = devm_gpiod_get_optional(&func->dev, "reset",
+						  GPIOD_OUT_LOW);
+	if (IS_ERR(bus->gpio_reset))
+		return PTR_ERR(bus->gpio_reset);
 	if (!bus->gpio_reset) {
-		dev_warn(&func->dev, "try to load firmware anyway\n");
+		dev_warn(&func->dev,
+			 "gpio reset is not defined, trying to load firmware anyway\n");
 	} else {
+		gpiod_set_consumer_name(bus->gpio_reset, "wfx reset");
 		if (spi_get_device_id(func)->driver_data & WFX_RESET_INVERTED)
 			gpiod_toggle_active_low(bus->gpio_reset);
 		gpiod_set_value_cansleep(bus->gpio_reset, 1);
@@ -239,8 +240,7 @@ static int wfx_spi_remove(struct spi_device *func)
 	return 0;
 }
 
-/*
- * For dynamic driver binding, kernel does not use OF to match driver. It only
+/* For dynamic driver binding, kernel does not use OF to match driver. It only
  * use modalias and modalias is a copy of 'compatible' DT node with vendor
  * stripped.
  */

@@ -7,8 +7,6 @@
 
 #include <arpa/inet.h>
 
-#include <sys/epoll.h>
-
 #include <linux/err.h>
 #include <linux/in.h>
 #include <linux/in6.h>
@@ -17,8 +15,13 @@
 #include "network_helpers.h"
 
 #define clean_errno() (errno == 0 ? "None" : strerror(errno))
-#define log_err(MSG, ...) fprintf(stderr, "(%s:%d: errno: %s) " MSG "\n", \
-	__FILE__, __LINE__, clean_errno(), ##__VA_ARGS__)
+#define log_err(MSG, ...) ({						\
+			int __save = errno;				\
+			fprintf(stderr, "(%s:%d: errno: %s) " MSG "\n", \
+				__FILE__, __LINE__, clean_errno(),	\
+				##__VA_ARGS__);				\
+			errno = __save;					\
+})
 
 struct ipv4_packet pkt_v4 = {
 	.eth.h_proto = __bpf_constant_htons(ETH_P_IP),
@@ -37,131 +40,319 @@ struct ipv6_packet pkt_v6 = {
 	.tcp.doff = 5,
 };
 
-int start_server_with_port(int family, int type, __u16 port)
+int settimeo(int fd, int timeout_ms)
 {
-	struct sockaddr_storage addr = {};
-	socklen_t len;
-	int fd;
+	struct timeval timeout = { .tv_sec = 3 };
 
-	if (family == AF_INET) {
-		struct sockaddr_in *sin = (void *)&addr;
-
-		sin->sin_family = AF_INET;
-		sin->sin_port = htons(port);
-		len = sizeof(*sin);
-	} else {
-		struct sockaddr_in6 *sin6 = (void *)&addr;
-
-		sin6->sin6_family = AF_INET6;
-		sin6->sin6_port = htons(port);
-		len = sizeof(*sin6);
+	if (timeout_ms > 0) {
+		timeout.tv_sec = timeout_ms / 1000;
+		timeout.tv_usec = (timeout_ms % 1000) * 1000;
 	}
 
-	fd = socket(family, type | SOCK_NONBLOCK, 0);
-	if (fd < 0) {
-		log_err("Failed to create server socket");
-		return -1;
-	}
-
-	if (bind(fd, (const struct sockaddr *)&addr, len) < 0) {
-		log_err("Failed to bind socket");
-		close(fd);
-		return -1;
-	}
-
-	if (type == SOCK_STREAM) {
-		if (listen(fd, 1) < 0) {
-			log_err("Failed to listed on socket");
-			close(fd);
-			return -1;
-		}
-	}
-
-	return fd;
-}
-
-int start_server(int family, int type)
-{
-	return start_server_with_port(family, type, 0);
-}
-
-static const struct timeval timeo_sec = { .tv_sec = 3 };
-static const size_t timeo_optlen = sizeof(timeo_sec);
-
-int connect_to_fd(int family, int type, int server_fd)
-{
-	int fd, save_errno;
-
-	fd = socket(family, type, 0);
-	if (fd < 0) {
-		log_err("Failed to create client socket");
-		return -1;
-	}
-
-	if (connect_fd_to_fd(fd, server_fd) < 0 && errno != EINPROGRESS) {
-		save_errno = errno;
-		close(fd);
-		errno = save_errno;
-		return -1;
-	}
-
-	return fd;
-}
-
-int connect_fd_to_fd(int client_fd, int server_fd)
-{
-	struct sockaddr_storage addr;
-	socklen_t len = sizeof(addr);
-	int save_errno;
-
-	if (setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeo_sec,
-		       timeo_optlen)) {
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+		       sizeof(timeout))) {
 		log_err("Failed to set SO_RCVTIMEO");
 		return -1;
 	}
 
-	if (getsockname(server_fd, (struct sockaddr *)&addr, &len)) {
-		log_err("Failed to get server addr");
-		return -1;
-	}
-
-	if (connect(client_fd, (const struct sockaddr *)&addr, len) < 0) {
-		if (errno != EINPROGRESS) {
-			save_errno = errno;
-			log_err("Failed to connect to server");
-			errno = save_errno;
-		}
+	if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
+		       sizeof(timeout))) {
+		log_err("Failed to set SO_SNDTIMEO");
 		return -1;
 	}
 
 	return 0;
 }
 
-int connect_wait(int fd)
+#define save_errno_close(fd) ({ int __save = errno; close(fd); errno = __save; })
+
+static int __start_server(int type, const struct sockaddr *addr,
+			  socklen_t addrlen, int timeout_ms, bool reuseport)
 {
-	struct epoll_event ev = {}, events[2];
-	int timeout_ms = 1000;
-	int efd, nfd;
+	int on = 1;
+	int fd;
 
-	efd = epoll_create1(EPOLL_CLOEXEC);
-	if (efd < 0) {
-		log_err("Failed to open epoll fd");
+	fd = socket(addr->sa_family, type, 0);
+	if (fd < 0) {
+		log_err("Failed to create server socket");
 		return -1;
 	}
 
-	ev.events = EPOLLRDHUP | EPOLLOUT;
-	ev.data.fd = fd;
+	if (settimeo(fd, timeout_ms))
+		goto error_close;
 
-	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &ev) < 0) {
-		log_err("Failed to register fd=%d on epoll fd=%d", fd, efd);
-		close(efd);
+	if (reuseport &&
+	    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on))) {
+		log_err("Failed to set SO_REUSEPORT");
 		return -1;
 	}
 
-	nfd = epoll_wait(efd, events, ARRAY_SIZE(events), timeout_ms);
-	if (nfd < 0)
-		log_err("Failed to wait for I/O event on epoll fd=%d", efd);
+	if (bind(fd, addr, addrlen) < 0) {
+		log_err("Failed to bind socket");
+		goto error_close;
+	}
 
-	close(efd);
-	return nfd;
+	if (type == SOCK_STREAM) {
+		if (listen(fd, 1) < 0) {
+			log_err("Failed to listed on socket");
+			goto error_close;
+		}
+	}
+
+	return fd;
+
+error_close:
+	save_errno_close(fd);
+	return -1;
+}
+
+int start_server(int family, int type, const char *addr_str, __u16 port,
+		 int timeout_ms)
+{
+	struct sockaddr_storage addr;
+	socklen_t addrlen;
+
+	if (make_sockaddr(family, addr_str, port, &addr, &addrlen))
+		return -1;
+
+	return __start_server(type, (struct sockaddr *)&addr,
+			      addrlen, timeout_ms, false);
+}
+
+int *start_reuseport_server(int family, int type, const char *addr_str,
+			    __u16 port, int timeout_ms, unsigned int nr_listens)
+{
+	struct sockaddr_storage addr;
+	unsigned int nr_fds = 0;
+	socklen_t addrlen;
+	int *fds;
+
+	if (!nr_listens)
+		return NULL;
+
+	if (make_sockaddr(family, addr_str, port, &addr, &addrlen))
+		return NULL;
+
+	fds = malloc(sizeof(*fds) * nr_listens);
+	if (!fds)
+		return NULL;
+
+	fds[0] = __start_server(type, (struct sockaddr *)&addr, addrlen,
+				timeout_ms, true);
+	if (fds[0] == -1)
+		goto close_fds;
+	nr_fds = 1;
+
+	if (getsockname(fds[0], (struct sockaddr *)&addr, &addrlen))
+		goto close_fds;
+
+	for (; nr_fds < nr_listens; nr_fds++) {
+		fds[nr_fds] = __start_server(type, (struct sockaddr *)&addr,
+					     addrlen, timeout_ms, true);
+		if (fds[nr_fds] == -1)
+			goto close_fds;
+	}
+
+	return fds;
+
+close_fds:
+	free_fds(fds, nr_fds);
+	return NULL;
+}
+
+void free_fds(int *fds, unsigned int nr_close_fds)
+{
+	if (fds) {
+		while (nr_close_fds)
+			close(fds[--nr_close_fds]);
+		free(fds);
+	}
+}
+
+int fastopen_connect(int server_fd, const char *data, unsigned int data_len,
+		     int timeout_ms)
+{
+	struct sockaddr_storage addr;
+	socklen_t addrlen = sizeof(addr);
+	struct sockaddr_in *addr_in;
+	int fd, ret;
+
+	if (getsockname(server_fd, (struct sockaddr *)&addr, &addrlen)) {
+		log_err("Failed to get server addr");
+		return -1;
+	}
+
+	addr_in = (struct sockaddr_in *)&addr;
+	fd = socket(addr_in->sin_family, SOCK_STREAM, 0);
+	if (fd < 0) {
+		log_err("Failed to create client socket");
+		return -1;
+	}
+
+	if (settimeo(fd, timeout_ms))
+		goto error_close;
+
+	ret = sendto(fd, data, data_len, MSG_FASTOPEN, (struct sockaddr *)&addr,
+		     addrlen);
+	if (ret != data_len) {
+		log_err("sendto(data, %u) != %d\n", data_len, ret);
+		goto error_close;
+	}
+
+	return fd;
+
+error_close:
+	save_errno_close(fd);
+	return -1;
+}
+
+static int connect_fd_to_addr(int fd,
+			      const struct sockaddr_storage *addr,
+			      socklen_t addrlen, const bool must_fail)
+{
+	int ret;
+
+	errno = 0;
+	ret = connect(fd, (const struct sockaddr *)addr, addrlen);
+	if (must_fail) {
+		if (!ret) {
+			log_err("Unexpected success to connect to server");
+			return -1;
+		}
+		if (errno != EPERM) {
+			log_err("Unexpected error from connect to server");
+			return -1;
+		}
+	} else {
+		if (ret) {
+			log_err("Failed to connect to server");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static const struct network_helper_opts default_opts;
+
+int connect_to_fd_opts(int server_fd, const struct network_helper_opts *opts)
+{
+	struct sockaddr_storage addr;
+	struct sockaddr_in *addr_in;
+	socklen_t addrlen, optlen;
+	int fd, type;
+
+	if (!opts)
+		opts = &default_opts;
+
+	optlen = sizeof(type);
+	if (getsockopt(server_fd, SOL_SOCKET, SO_TYPE, &type, &optlen)) {
+		log_err("getsockopt(SOL_TYPE)");
+		return -1;
+	}
+
+	addrlen = sizeof(addr);
+	if (getsockname(server_fd, (struct sockaddr *)&addr, &addrlen)) {
+		log_err("Failed to get server addr");
+		return -1;
+	}
+
+	addr_in = (struct sockaddr_in *)&addr;
+	fd = socket(addr_in->sin_family, type, 0);
+	if (fd < 0) {
+		log_err("Failed to create client socket");
+		return -1;
+	}
+
+	if (settimeo(fd, opts->timeout_ms))
+		goto error_close;
+
+	if (opts->cc && opts->cc[0] &&
+	    setsockopt(fd, SOL_TCP, TCP_CONGESTION, opts->cc,
+		       strlen(opts->cc) + 1))
+		goto error_close;
+
+	if (connect_fd_to_addr(fd, &addr, addrlen, opts->must_fail))
+		goto error_close;
+
+	return fd;
+
+error_close:
+	save_errno_close(fd);
+	return -1;
+}
+
+int connect_to_fd(int server_fd, int timeout_ms)
+{
+	struct network_helper_opts opts = {
+		.timeout_ms = timeout_ms,
+	};
+
+	return connect_to_fd_opts(server_fd, &opts);
+}
+
+int connect_fd_to_fd(int client_fd, int server_fd, int timeout_ms)
+{
+	struct sockaddr_storage addr;
+	socklen_t len = sizeof(addr);
+
+	if (settimeo(client_fd, timeout_ms))
+		return -1;
+
+	if (getsockname(server_fd, (struct sockaddr *)&addr, &len)) {
+		log_err("Failed to get server addr");
+		return -1;
+	}
+
+	if (connect_fd_to_addr(client_fd, &addr, len, false))
+		return -1;
+
+	return 0;
+}
+
+int make_sockaddr(int family, const char *addr_str, __u16 port,
+		  struct sockaddr_storage *addr, socklen_t *len)
+{
+	if (family == AF_INET) {
+		struct sockaddr_in *sin = (void *)addr;
+
+		memset(addr, 0, sizeof(*sin));
+		sin->sin_family = AF_INET;
+		sin->sin_port = htons(port);
+		if (addr_str &&
+		    inet_pton(AF_INET, addr_str, &sin->sin_addr) != 1) {
+			log_err("inet_pton(AF_INET, %s)", addr_str);
+			return -1;
+		}
+		if (len)
+			*len = sizeof(*sin);
+		return 0;
+	} else if (family == AF_INET6) {
+		struct sockaddr_in6 *sin6 = (void *)addr;
+
+		memset(addr, 0, sizeof(*sin6));
+		sin6->sin6_family = AF_INET6;
+		sin6->sin6_port = htons(port);
+		if (addr_str &&
+		    inet_pton(AF_INET6, addr_str, &sin6->sin6_addr) != 1) {
+			log_err("inet_pton(AF_INET6, %s)", addr_str);
+			return -1;
+		}
+		if (len)
+			*len = sizeof(*sin6);
+		return 0;
+	}
+	return -1;
+}
+
+char *ping_command(int family)
+{
+	if (family == AF_INET6) {
+		/* On some systems 'ping' doesn't support IPv6, so use ping6 if it is present. */
+		if (!system("which ping6 >/dev/null 2>&1"))
+			return "ping6";
+		else
+			return "ping -6";
+	}
+	return "ping";
 }

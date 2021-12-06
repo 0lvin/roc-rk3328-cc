@@ -22,7 +22,6 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/iopoll.h>
-#include <linux/rockchip/cpu.h>
 
 #define UPDATE(x, h, l)		(((x) << (l)) & GENMASK((h), (l)))
 
@@ -493,8 +492,7 @@ static int inno_hdmi_phy_power_on(struct phy *phy)
 	if (!inno->plat_data->ops->power_on)
 		return -EINVAL;
 
-	if (inno->plat_data->dev_type == INNO_HDMI_PHY_RK3328 &&
-	    rockchip_get_cpu_version())
+	if (inno->plat_data->dev_type == INNO_HDMI_PHY_RK3328)
 		chipversion = 2;
 
 	for (; cfg->tmdsclock != ~0UL; cfg++)
@@ -643,7 +641,7 @@ static int inno_hdmi_phy_rk3228_clk_set_rate(struct clk_hw *hw,
 					     unsigned long parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
-	const struct pre_pll_config *cfg = pre_pll_cfg_table;
+	const struct pre_pll_config *cfg;
 	unsigned long tmdsclock = inno_hdmi_phy_get_tmdsclk(inno, rate);
 	u32 v;
 	int ret;
@@ -797,7 +795,7 @@ static int inno_hdmi_phy_rk3328_clk_set_rate(struct clk_hw *hw,
 					     unsigned long parent_rate)
 {
 	struct inno_hdmi_phy *inno = to_inno_hdmi_phy(hw);
-	const struct pre_pll_config *cfg = pre_pll_cfg_table;
+	const struct pre_pll_config *cfg;
 	unsigned long tmdsclock = inno_hdmi_phy_get_tmdsclk(inno, rate);
 	u32 val;
 	int ret;
@@ -1266,7 +1264,6 @@ static int inno_hdmi_phy_probe(struct platform_device *pdev)
 {
 	struct inno_hdmi_phy *inno;
 	struct phy_provider *phy_provider;
-	struct resource *res;
 	void __iomem *regs;
 	int ret;
 
@@ -1280,8 +1277,7 @@ static int inno_hdmi_phy_probe(struct platform_device *pdev)
 	if (!inno->plat_data || !inno->plat_data->ops)
 		return -EINVAL;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	regs = devm_ioremap_resource(inno->dev, res);
+	regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 

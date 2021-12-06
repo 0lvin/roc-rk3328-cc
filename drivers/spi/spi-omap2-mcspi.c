@@ -4,7 +4,7 @@
  *
  * Copyright (C) 2005, 2006 Nokia Corporation
  * Author:	Samuel Ortiz <samuel.ortiz@nokia.com> and
- *		Juha Yrj�l� <juha.yrjola@nokia.com>
+ *		Juha Yrjola <juha.yrjola@nokia.com>
  */
 
 #include <linux/kernel.h>
@@ -24,10 +24,8 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/gcd.h>
-#include <linux/iopoll.h>
 
 #include <linux/spi/spi.h>
-#include <linux/gpio.h>
 
 #include <linux/platform_data/spi-omap2-mcspi.h>
 
@@ -349,9 +347,19 @@ disable_fifo:
 
 static int mcspi_wait_for_reg_bit(void __iomem *reg, unsigned long bit)
 {
-	u32 val;
+	unsigned long timeout;
 
-	return readl_poll_timeout(reg, val, val & bit, 1, MSEC_PER_SEC);
+	timeout = jiffies + msecs_to_jiffies(1000);
+	while (!(readl_relaxed(reg) & bit)) {
+		if (time_after(jiffies, timeout)) {
+			if (!(readl_relaxed(reg) & bit))
+				return -ETIMEDOUT;
+			else
+				return 0;
+		}
+		cpu_relax();
+	}
+	return 0;
 }
 
 static int mcspi_wait_for_completion(struct  omap2_mcspi *mcspi,
@@ -1024,51 +1032,6 @@ static void omap2_mcspi_release_dma(struct spi_master *master)
 	}
 }
 
-static int omap2_mcspi_setup(struct spi_device *spi)
-{
-	int			ret;
-	struct omap2_mcspi	*mcspi = spi_master_get_devdata(spi->master);
-	struct omap2_mcspi_regs	*ctx = &mcspi->ctx;
-	struct omap2_mcspi_cs	*cs = spi->controller_state;
-
-	if (!cs) {
-		cs = kzalloc(sizeof *cs, GFP_KERNEL);
-		if (!cs)
-			return -ENOMEM;
-		cs->base = mcspi->base + spi->chip_select * 0x14;
-		cs->phys = mcspi->phys + spi->chip_select * 0x14;
-		cs->mode = 0;
-		cs->chconf0 = 0;
-		cs->chctrl0 = 0;
-		spi->controller_state = cs;
-		/* Link this to context save list */
-		list_add_tail(&cs->node, &ctx->cs);
-
-		if (gpio_is_valid(spi->cs_gpio)) {
-			ret = gpio_request(spi->cs_gpio, dev_name(&spi->dev));
-			if (ret) {
-				dev_err(&spi->dev, "failed to request gpio\n");
-				return ret;
-			}
-			gpio_direction_output(spi->cs_gpio,
-					 !(spi->mode & SPI_CS_HIGH));
-		}
-	}
-
-	ret = pm_runtime_get_sync(mcspi->dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(mcspi->dev);
-
-		return ret;
-	}
-
-	ret = omap2_mcspi_setup_transfer(spi, NULL);
-	pm_runtime_mark_last_busy(mcspi->dev);
-	pm_runtime_put_autosuspend(mcspi->dev);
-
-	return ret;
-}
-
 static void omap2_mcspi_cleanup(struct spi_device *spi)
 {
 	struct omap2_mcspi_cs	*cs;
@@ -1080,9 +1043,48 @@ static void omap2_mcspi_cleanup(struct spi_device *spi)
 
 		kfree(cs);
 	}
+}
 
-	if (gpio_is_valid(spi->cs_gpio))
-		gpio_free(spi->cs_gpio);
+static int omap2_mcspi_setup(struct spi_device *spi)
+{
+	bool			initial_setup = false;
+	int			ret;
+	struct omap2_mcspi	*mcspi = spi_master_get_devdata(spi->master);
+	struct omap2_mcspi_regs	*ctx = &mcspi->ctx;
+	struct omap2_mcspi_cs	*cs = spi->controller_state;
+
+	if (!cs) {
+		cs = kzalloc(sizeof(*cs), GFP_KERNEL);
+		if (!cs)
+			return -ENOMEM;
+		cs->base = mcspi->base + spi->chip_select * 0x14;
+		cs->phys = mcspi->phys + spi->chip_select * 0x14;
+		cs->mode = 0;
+		cs->chconf0 = 0;
+		cs->chctrl0 = 0;
+		spi->controller_state = cs;
+		/* Link this to context save list */
+		list_add_tail(&cs->node, &ctx->cs);
+		initial_setup = true;
+	}
+
+	ret = pm_runtime_get_sync(mcspi->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(mcspi->dev);
+		if (initial_setup)
+			omap2_mcspi_cleanup(spi);
+
+		return ret;
+	}
+
+	ret = omap2_mcspi_setup_transfer(spi, NULL);
+	if (ret && initial_setup)
+		omap2_mcspi_cleanup(spi);
+
+	pm_runtime_mark_last_busy(mcspi->dev);
+	pm_runtime_put_autosuspend(mcspi->dev);
+
+	return ret;
 }
 
 static irqreturn_t omap2_mcspi_irq_handler(int irq, void *data)
@@ -1152,7 +1154,7 @@ static int omap2_mcspi_transfer_one(struct spi_master *master,
 
 	omap2_mcspi_set_enable(spi, 0);
 
-	if (gpio_is_valid(spi->cs_gpio))
+	if (spi->cs_gpiod)
 		omap2_mcspi_set_cs(spi, spi->mode & SPI_CS_HIGH);
 
 	if (par_override ||
@@ -1241,7 +1243,7 @@ out:
 
 	omap2_mcspi_set_enable(spi, 0);
 
-	if (gpio_is_valid(spi->cs_gpio))
+	if (spi->cs_gpiod)
 		omap2_mcspi_set_cs(spi, !(spi->mode & SPI_CS_HIGH));
 
 	if (mcspi->fifo_depth > 0 && t)
@@ -1332,6 +1334,17 @@ static int omap2_mcspi_controller_setup(struct omap2_mcspi *mcspi)
 	return 0;
 }
 
+static int omap_mcspi_runtime_suspend(struct device *dev)
+{
+	int error;
+
+	error = pinctrl_pm_select_idle_state(dev);
+	if (error)
+		dev_warn(dev, "%s: failed to set pins: %i\n", __func__, error);
+
+	return 0;
+}
+
 /*
  * When SPI wake up from off-mode, CS is in activate state. If it was in
  * inactive state when driver was suspend, then force it to inactive state at
@@ -1343,6 +1356,11 @@ static int omap_mcspi_runtime_resume(struct device *dev)
 	struct omap2_mcspi *mcspi = spi_master_get_devdata(master);
 	struct omap2_mcspi_regs *ctx = &mcspi->ctx;
 	struct omap2_mcspi_cs *cs;
+	int error;
+
+	error = pinctrl_pm_select_default_state(dev);
+	if (error)
+		dev_warn(dev, "%s: failed to set pins: %i\n", __func__, error);
 
 	/* McSPI: context restore */
 	mcspi_write_reg(master, OMAP2_MCSPI_MODULCTRL, ctx->modulctrl);
@@ -1431,6 +1449,7 @@ static int omap2_mcspi_probe(struct platform_device *pdev)
 	master->dev.of_node = node;
 	master->max_speed_hz = OMAP2_MCSPI_MAX_FREQ;
 	master->min_speed_hz = OMAP2_MCSPI_MAX_FREQ >> 15;
+	master->use_gpio_descriptors = true;
 
 	platform_set_drvdata(pdev, master);
 
@@ -1570,11 +1589,6 @@ static int __maybe_unused omap2_mcspi_resume(struct device *dev)
 	struct omap2_mcspi *mcspi = spi_master_get_devdata(master);
 	int error;
 
-	error = pinctrl_pm_select_default_state(dev);
-	if (error)
-		dev_warn(mcspi->dev, "%s: failed to set pins: %i\n",
-			 __func__, error);
-
 	error = spi_master_resume(master);
 	if (error)
 		dev_warn(mcspi->dev, "%s: master resume failed: %i\n",
@@ -1586,7 +1600,8 @@ static int __maybe_unused omap2_mcspi_resume(struct device *dev)
 static const struct dev_pm_ops omap2_mcspi_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(omap2_mcspi_suspend,
 				omap2_mcspi_resume)
-	.runtime_resume	= omap_mcspi_runtime_resume,
+	.runtime_suspend	= omap_mcspi_runtime_suspend,
+	.runtime_resume		= omap_mcspi_runtime_resume,
 };
 
 static struct platform_driver omap2_mcspi_driver = {

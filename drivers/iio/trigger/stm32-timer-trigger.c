@@ -296,7 +296,7 @@ static ssize_t stm32_tt_show_master_mode(struct device *dev,
 	else
 		cr2 = (cr2 & TIM_CR2_MMS) >> TIM_CR2_MMS_SHIFT;
 
-	return snprintf(buf, PAGE_SIZE, "%s\n", master_mode_table[cr2]);
+	return sysfs_emit(buf, "%s\n", master_mode_table[cr2]);
 }
 
 static ssize_t stm32_tt_store_master_mode(struct device *dev,
@@ -723,12 +723,10 @@ static struct stm32_timer_trigger *stm32_setup_counter_device(struct device *dev
 		return NULL;
 
 	indio_dev->name = dev_name(dev);
-	indio_dev->dev.parent = dev;
 	indio_dev->info = &stm32_trigger_info;
 	indio_dev->modes = INDIO_HARDWARE_TRIGGERED;
 	indio_dev->num_channels = 1;
 	indio_dev->channels = &stm32_trigger_channel;
-	indio_dev->dev.of_node = dev->of_node;
 
 	ret = devm_iio_device_register(dev, indio_dev);
 	if (ret)

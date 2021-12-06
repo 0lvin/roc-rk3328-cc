@@ -31,6 +31,8 @@ static int interface_version;
 /* Whether we have to aggregate result data for some domains. */
 static bool aggregate_result_elements;
 
+static cpumask_t hv_24x7_cpumask;
+
 static bool domain_is_valid(unsigned domain)
 {
 	switch (domain) {
@@ -224,14 +226,14 @@ static struct attribute_group event_long_desc_group = {
 
 static struct kmem_cache *hv_page_cache;
 
-DEFINE_PER_CPU(int, hv_24x7_txn_flags);
-DEFINE_PER_CPU(int, hv_24x7_txn_err);
+static DEFINE_PER_CPU(int, hv_24x7_txn_flags);
+static DEFINE_PER_CPU(int, hv_24x7_txn_err);
 
 struct hv_24x7_hw {
 	struct perf_event *events[255];
 };
 
-DEFINE_PER_CPU(struct hv_24x7_hw, hv_24x7_hw);
+static DEFINE_PER_CPU(struct hv_24x7_hw, hv_24x7_hw);
 
 /*
  * request_buffer and result_buffer are not required to be 4k aligned,
@@ -239,8 +241,8 @@ DEFINE_PER_CPU(struct hv_24x7_hw, hv_24x7_hw);
  * the simplest way to ensure that.
  */
 #define H24x7_DATA_BUFFER_SIZE	4096
-DEFINE_PER_CPU(char, hv_24x7_reqb[H24x7_DATA_BUFFER_SIZE]) __aligned(4096);
-DEFINE_PER_CPU(char, hv_24x7_resb[H24x7_DATA_BUFFER_SIZE]) __aligned(4096);
+static DEFINE_PER_CPU(char, hv_24x7_reqb[H24x7_DATA_BUFFER_SIZE]) __aligned(4096);
+static DEFINE_PER_CPU(char, hv_24x7_resb[H24x7_DATA_BUFFER_SIZE]) __aligned(4096);
 
 static unsigned int max_num_requests(int interface_version)
 {
@@ -444,6 +446,12 @@ static ssize_t device_show_string(struct device *dev,
 	d = container_of(attr, struct dev_ext_attribute, attr);
 
 	return sprintf(buf, "%s\n", (char *)d->var);
+}
+
+static ssize_t cpumask_show(struct device *dev,
+			    struct device_attribute *attr, char *buf)
+{
+	return cpumap_print_to_pagebuf(true, buf, &hv_24x7_cpumask);
 }
 
 static ssize_t sockets_show(struct device *dev,
@@ -756,6 +764,14 @@ static ssize_t catalog_event_len_validate(struct hv_24x7_event_data *event,
 	return ev_len;
 }
 
+/*
+ * Return true incase of invalid or dummy events with names like RESERVED*
+ */
+static bool ignore_event(const char *name)
+{
+	return strncmp(name, "RESERVED", 8) == 0;
+}
+
 #define MAX_4K (SIZE_MAX / 4096)
 
 static int create_events_from_catalog(struct attribute ***events_,
@@ -886,6 +902,10 @@ static int create_events_from_catalog(struct attribute ***events_,
 
 		name = event_name(event, &nl);
 
+		if (ignore_event(name)) {
+			junk_events++;
+			continue;
+		}
 		if (event->event_group_record_len == 0) {
 			pr_devel("invalid event %zu (%.*s): group_record_len == 0, skipping\n",
 					event_idx, nl, name);
@@ -947,6 +967,9 @@ static int create_events_from_catalog(struct attribute ***events_,
 			continue;
 
 		name  = event_name(event, &nl);
+		if (ignore_event(name))
+			continue;
+
 		nonce = event_uniq_add(&ev_uniq, name, nl, event->domain);
 		ct    = event_data_to_attrs(event_idx, events + event_attr_ct,
 					    event, nonce);
@@ -1113,10 +1136,20 @@ static DEVICE_ATTR_RO(domains);
 static DEVICE_ATTR_RO(sockets);
 static DEVICE_ATTR_RO(chipspersocket);
 static DEVICE_ATTR_RO(coresperchip);
+static DEVICE_ATTR_RO(cpumask);
 
 static struct bin_attribute *if_bin_attrs[] = {
 	&bin_attr_catalog,
 	NULL,
+};
+
+static struct attribute *cpumask_attrs[] = {
+	&dev_attr_cpumask.attr,
+	NULL,
+};
+
+static struct attribute_group cpumask_attr_group = {
+	.attrs = cpumask_attrs,
 };
 
 static struct attribute *if_attrs[] = {
@@ -1141,6 +1174,7 @@ static const struct attribute_group *attr_groups[] = {
 	&event_desc_group,
 	&event_long_desc_group,
 	&if_group,
+	&cpumask_attr_group,
 	NULL,
 };
 
@@ -1641,6 +1675,45 @@ static struct pmu h_24x7_pmu = {
 	.capabilities = PERF_PMU_CAP_NO_EXCLUDE,
 };
 
+static int ppc_hv_24x7_cpu_online(unsigned int cpu)
+{
+	if (cpumask_empty(&hv_24x7_cpumask))
+		cpumask_set_cpu(cpu, &hv_24x7_cpumask);
+
+	return 0;
+}
+
+static int ppc_hv_24x7_cpu_offline(unsigned int cpu)
+{
+	int target;
+
+	/* Check if exiting cpu is used for collecting 24x7 events */
+	if (!cpumask_test_and_clear_cpu(cpu, &hv_24x7_cpumask))
+		return 0;
+
+	/* Find a new cpu to collect 24x7 events */
+	target = cpumask_last(cpu_active_mask);
+
+	if (target < 0 || target >= nr_cpu_ids) {
+		pr_err("hv_24x7: CPU hotplug init failed\n");
+		return -1;
+	}
+
+	/* Migrate 24x7 events to the new target */
+	cpumask_set_cpu(target, &hv_24x7_cpumask);
+	perf_pmu_migrate_context(&h_24x7_pmu, cpu, target);
+
+	return 0;
+}
+
+static int hv_24x7_cpu_hotplug_init(void)
+{
+	return cpuhp_setup_state(CPUHP_AP_PERF_POWERPC_HV_24x7_ONLINE,
+			  "perf/powerpc/hv_24x7:online",
+			  ppc_hv_24x7_cpu_online,
+			  ppc_hv_24x7_cpu_offline);
+}
+
 static int hv_24x7_init(void)
 {
 	int r;
@@ -1682,6 +1755,11 @@ static int hv_24x7_init(void)
 				   &event_desc_group.attrs,
 				   &event_long_desc_group.attrs);
 
+	if (r)
+		return r;
+
+	/* init cpuhotplug */
+	r = hv_24x7_cpu_hotplug_init();
 	if (r)
 		return r;
 

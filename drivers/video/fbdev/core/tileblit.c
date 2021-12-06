@@ -16,21 +16,6 @@
 #include <asm/types.h>
 #include "fbcon.h"
 
-static void tile_bmove(struct vc_data *vc, struct fb_info *info, int sy,
-		       int sx, int dy, int dx, int height, int width)
-{
-	struct fb_tilearea area;
-
-	area.sx = sx;
-	area.sy = sy;
-	area.dx = dx;
-	area.dy = dy;
-	area.height = height;
-	area.width = width;
-
-	info->tileops->fb_tilecopy(info, &area);
-}
-
 static void tile_clear(struct vc_data *vc, struct fb_info *info, int sy,
 		       int sx, int height, int width)
 {
@@ -80,13 +65,13 @@ static void tile_clear_margins(struct vc_data *vc, struct fb_info *info,
 }
 
 static void tile_cursor(struct vc_data *vc, struct fb_info *info, int mode,
-			int softback_lines, int fg, int bg)
+			int fg, int bg)
 {
 	struct fb_tilecursor cursor;
-	int use_sw = (vc->vc_cursor_type & 0x10);
+	int use_sw = vc->vc_cursor_type & CUR_SW;
 
-	cursor.sx = vc->vc_x;
-	cursor.sy = vc->vc_y;
+	cursor.sx = vc->state.x;
+	cursor.sy = vc->state.y;
 	cursor.mode = (mode == CM_ERASE || use_sw) ? 0 : 1;
 	cursor.fg = fg;
 	cursor.bg = bg;
@@ -133,7 +118,6 @@ void fbcon_set_tileops(struct vc_data *vc, struct fb_info *info)
 	struct fb_tilemap map;
 	struct fbcon_ops *ops = info->fbcon_par;
 
-	ops->bmove = tile_bmove;
 	ops->clear = tile_clear;
 	ops->putcs = tile_putcs;
 	ops->clear_margins = tile_clear_margins;
@@ -144,11 +128,8 @@ void fbcon_set_tileops(struct vc_data *vc, struct fb_info *info)
 		map.width = vc->vc_font.width;
 		map.height = vc->vc_font.height;
 		map.depth = 1;
-		map.length = (ops->p->userfont) ?
-			FNTCHARCNT(ops->p->fontdata) : 256;
+		map.length = vc->vc_font.charcount;
 		map.data = ops->p->fontdata;
 		info->tileops->fb_settile(info, &map);
 	}
 }
-
-EXPORT_SYMBOL(fbcon_set_tileops);

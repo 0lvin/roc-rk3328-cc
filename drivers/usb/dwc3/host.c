@@ -2,7 +2,7 @@
 /*
  * host.c - DesignWare USB3 DRD Controller Host Glue
  *
- * Copyright (C) 2011 Texas Instruments Incorporated - http://www.ti.com
+ * Copyright (C) 2011 Texas Instruments Incorporated - https://www.ti.com
  *
  * Authors: Felipe Balbi <balbi@ti.com>,
  */
@@ -108,7 +108,7 @@ int dwc3_host_init(struct dwc3 *dwc)
 		props[prop_idx++] = PROPERTY_ENTRY_BOOL("quirk-broken-port-ped");
 
 	if (prop_idx) {
-		ret = platform_device_add_properties(xhci, props);
+		ret = device_create_managed_software_node(&xhci->dev, props, NULL);
 		if (ret) {
 			dev_err(dwc->dev, "failed to add properties to xHCI\n");
 			goto err;

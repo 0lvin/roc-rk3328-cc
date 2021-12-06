@@ -38,7 +38,7 @@ Conventions and Notations Used in This Document
 6. i = [a..b]: sequence of integers from a to b, inclusive, i.e. i =
    [0..2]: i = 0, 1, 2.
 
-7. Given an ``OUTPUT`` buffer A, then A’ represents a buffer on the ``CAPTURE``
+7. Given an ``OUTPUT`` buffer A, then A' represents a buffer on the ``CAPTURE``
    queue containing data that resulted from processing buffer A.
 
 .. _decoder-glossary:
@@ -247,7 +247,7 @@ Querying Capabilities
 Initialization
 ==============
 
-1. Set the coded format on ``OUTPUT`` via :c:func:`VIDIOC_S_FMT`
+1. Set the coded format on ``OUTPUT`` via :c:func:`VIDIOC_S_FMT`.
 
    * **Required fields:**
 
@@ -288,7 +288,7 @@ Initialization
 
       Changing the ``OUTPUT`` format may change the currently set ``CAPTURE``
       format. How the new ``CAPTURE`` format is determined is up to the decoder
-      and the client must ensure it matches its needs afterwards.
+      and the client must ensure it matches its needs afterwards.
 
 2.  Allocate source (bytestream) buffers via :c:func:`VIDIOC_REQBUFS` on
     ``OUTPUT``.
@@ -803,7 +803,7 @@ it may be affected as per normal decoder operation.
    * The decoder will drop all the pending ``OUTPUT`` buffers and they must be
      treated as returned to the client (following standard semantics).
 
-2. Restart the ``OUTPUT`` queue via :c:func:`VIDIOC_STREAMON`
+2. Restart the ``OUTPUT`` queue via :c:func:`VIDIOC_STREAMON`.
 
    * **Required fields:**
 
@@ -874,7 +874,7 @@ it may be affected as per normal decoder operation.
 
    any of the following results on the ``CAPTURE`` queue is allowed:
 
-     {A’, B’, G’, H’}, {A’, G’, H’}, {G’, H’}.
+     {A', B', G', H'}, {A', G', H'}, {G', H'}.
 
    To determine the CAPTURE buffer containing the first decoded frame after the
    seek, the client may observe the timestamps to match the CAPTURE and OUTPUT
@@ -906,7 +906,9 @@ reflected by corresponding queries):
 
 * visible resolution (selection rectangles),
 
-* the minimum number of buffers needed for decoding.
+* the minimum number of buffers needed for decoding,
+
+* bit-depth of the bitstream has been changed.
 
 Whenever that happens, the decoder must proceed as follows:
 
@@ -1059,7 +1061,7 @@ sequence was started.
    ``V4L2_DEC_CMD_STOP`` again while the drain sequence is in progress and they
    will fail with -EBUSY error code if attempted.
 
-   Although mandatory, the availability of decoder commands may be queried
+   Although not mandatory, the availability of decoder commands may be queried
    using :c:func:`VIDIOC_TRY_DECODER_CMD`.
 
 End of Stream

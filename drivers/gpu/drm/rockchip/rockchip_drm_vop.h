@@ -17,9 +17,20 @@
 
 #define NUM_YUV2YUV_COEFFICIENTS 12
 
+/* AFBC supports a number of configurable modes. Relevant to us is block size
+ * (16x16 or 32x8), storage modifiers (SPARSE, SPLIT), and the YUV-like
+ * colourspace transform (YTR). 16x16 SPARSE mode is always used. SPLIT mode
+ * could be enabled via the hreg_block_split register, but is not currently
+ * handled. The colourspace transform is implicitly always assumed by the
+ * decoder, so consumers must use this transform as well.
+ *
+ * Failure to match modifiers will cause errors displaying AFBC buffers
+ * produced by conformant AFBC producers, including Mesa.
+ */
 #define ROCKCHIP_AFBC_MOD \
 	DRM_FORMAT_MOD_ARM_AFBC( \
 		AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 | AFBC_FORMAT_MOD_SPARSE \
+			| AFBC_FORMAT_MOD_YTR \
 	)
 
 enum vop_data_format {
@@ -167,6 +178,9 @@ struct vop_win_phy {
 
 	struct vop_reg dst_alpha_ctl;
 	struct vop_reg src_alpha_ctl;
+	struct vop_reg alpha_pre_mul;
+	struct vop_reg alpha_mode;
+	struct vop_reg alpha_en;
 	struct vop_reg channel;
 };
 
@@ -205,23 +219,9 @@ struct vop_data {
 #define FS_INTR				(1 << 1)
 #define LINE_FLAG_INTR			(1 << 2)
 #define BUS_ERROR_INTR			(1 << 3)
-#define FS_NEW_INTR			(1 << 4)
-#define ADDR_SAME_INTR 			(1 << 5)
-#define LINE_FLAG1_INTR			(1 << 6)
-#define WIN0_EMPTY_INTR			(1 << 7)
-#define WIN1_EMPTY_INTR			(1 << 8)
-#define WIN2_EMPTY_INTR			(1 << 9)
-#define WIN3_EMPTY_INTR			(1 << 10)
-#define HWC_EMPTY_INTR			(1 << 11)
-#define POST_BUF_EMPTY_INTR		(1 << 12)
-#define PWM_GEN_INTR			(1 << 13)
 
 #define INTR_MASK			(DSP_HOLD_VALID_INTR | FS_INTR | \
-					 LINE_FLAG_INTR | BUS_ERROR_INTR | \
-					 FS_NEW_INTR | LINE_FLAG1_INTR | \
-					 WIN0_EMPTY_INTR | WIN1_EMPTY_INTR | \
-					 WIN2_EMPTY_INTR | WIN3_EMPTY_INTR | \
-					 HWC_EMPTY_INTR | POST_BUF_EMPTY_INTR)
+					 LINE_FLAG_INTR | BUS_ERROR_INTR)
 
 #define DSP_HOLD_VALID_INTR_EN(x)	((x) << 4)
 #define FS_INTR_EN(x)			((x) << 5)

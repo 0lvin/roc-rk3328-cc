@@ -8,19 +8,21 @@ http://github.com/freedreno/envytools/
 git clone https://github.com/freedreno/envytools.git
 
 The rules-ng-ng source files this header was generated from are:
-- /home/robclark/src/envytools/rnndb/adreno.xml               (    501 bytes, from 2018-07-03 19:37:13)
-- /home/robclark/src/envytools/rnndb/freedreno_copyright.xml  (   1572 bytes, from 2018-07-03 19:37:13)
-- /home/robclark/src/envytools/rnndb/adreno/a2xx.xml          (  42463 bytes, from 2018-11-19 13:44:03)
-- /home/robclark/src/envytools/rnndb/adreno/adreno_common.xml (  14201 bytes, from 2018-12-02 17:29:54)
-- /home/robclark/src/envytools/rnndb/adreno/adreno_pm4.xml    (  43052 bytes, from 2018-12-02 17:29:54)
-- /home/robclark/src/envytools/rnndb/adreno/a3xx.xml          (  83840 bytes, from 2018-07-03 19:37:13)
-- /home/robclark/src/envytools/rnndb/adreno/a4xx.xml          ( 112086 bytes, from 2018-07-03 19:37:13)
-- /home/robclark/src/envytools/rnndb/adreno/a5xx.xml          ( 147240 bytes, from 2018-12-02 17:29:54)
-- /home/robclark/src/envytools/rnndb/adreno/a6xx.xml          ( 140790 bytes, from 2018-12-02 17:29:54)
-- /home/robclark/src/envytools/rnndb/adreno/a6xx_gmu.xml      (  10431 bytes, from 2018-09-14 13:03:07)
-- /home/robclark/src/envytools/rnndb/adreno/ocmem.xml         (   1773 bytes, from 2018-07-03 19:37:13)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno.xml                     (    594 bytes, from 2021-02-18 16:45:44)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/freedreno_copyright.xml        (   1572 bytes, from 2021-02-18 16:45:44)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/a2xx.xml                (  90810 bytes, from 2021-02-18 16:45:44)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/adreno_common.xml       (  14386 bytes, from 2021-02-18 16:45:44)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/adreno_pm4.xml          (  67699 bytes, from 2021-05-31 20:21:57)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/a3xx.xml                (  84226 bytes, from 2021-02-18 16:45:44)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/a4xx.xml                ( 112551 bytes, from 2021-02-18 16:45:44)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/a5xx.xml                ( 150713 bytes, from 2021-06-10 22:34:02)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/a6xx.xml                ( 180049 bytes, from 2021-06-02 21:44:19)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/a6xx_gmu.xml            (  11331 bytes, from 2021-05-21 19:18:08)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/ocmem.xml               (   1773 bytes, from 2021-02-18 16:45:44)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/adreno_control_regs.xml (   6038 bytes, from 2021-05-27 20:22:36)
+- /home/robclark/src/mesa/mesa/src/freedreno/registers/adreno/adreno_pipe_regs.xml    (   2924 bytes, from 2021-05-27 20:18:13)
 
-Copyright (C) 2013-2018 by the following authors:
+Copyright (C) 2013-2021 by the following authors:
 - Rob Clark <robdclark@gmail.com> (robclark)
 - Ilia Mirkin <imirkin@alum.mit.edu> (imirkin)
 
@@ -46,24 +48,109 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 
-#define A6XX_GMU_GPU_IDLE_STATUS_BUSY_IGN_AHB			0x00800000
-#define A6XX_GMU_GPU_IDLE_STATUS_CX_GX_CPU_BUSY_IGN_AHB		0x40000000
-#define A6XX_GMU_OOB_BOOT_SLUMBER_SET_MASK			0x00400000
-#define A6XX_GMU_OOB_BOOT_SLUMBER_CHECK_MASK			0x40000000
-#define A6XX_GMU_OOB_BOOT_SLUMBER_CLEAR_MASK			0x40000000
-#define A6XX_GMU_OOB_DCVS_SET_MASK				0x00800000
-#define A6XX_GMU_OOB_DCVS_CHECK_MASK				0x80000000
-#define A6XX_GMU_OOB_DCVS_CLEAR_MASK				0x80000000
-#define A6XX_GMU_OOB_GPU_SET_MASK				0x00040000
-#define A6XX_GMU_OOB_GPU_CHECK_MASK				0x04000000
-#define A6XX_GMU_OOB_GPU_CLEAR_MASK				0x04000000
-#define A6XX_GMU_OOB_PERFCNTR_SET_MASK				0x00020000
-#define A6XX_GMU_OOB_PERFCNTR_CHECK_MASK			0x02000000
-#define A6XX_GMU_OOB_PERFCNTR_CLEAR_MASK			0x02000000
+#define A6XX_GMU_GPU_IDLE_STATUS_BUSY_IGN_AHB__MASK		0x00800000
+#define A6XX_GMU_GPU_IDLE_STATUS_BUSY_IGN_AHB__SHIFT		23
+static inline uint32_t A6XX_GMU_GPU_IDLE_STATUS_BUSY_IGN_AHB(uint32_t val)
+{
+	return ((val) << A6XX_GMU_GPU_IDLE_STATUS_BUSY_IGN_AHB__SHIFT) & A6XX_GMU_GPU_IDLE_STATUS_BUSY_IGN_AHB__MASK;
+}
+#define A6XX_GMU_GPU_IDLE_STATUS_CX_GX_CPU_BUSY_IGN_AHB__MASK	0x40000000
+#define A6XX_GMU_GPU_IDLE_STATUS_CX_GX_CPU_BUSY_IGN_AHB__SHIFT	30
+static inline uint32_t A6XX_GMU_GPU_IDLE_STATUS_CX_GX_CPU_BUSY_IGN_AHB(uint32_t val)
+{
+	return ((val) << A6XX_GMU_GPU_IDLE_STATUS_CX_GX_CPU_BUSY_IGN_AHB__SHIFT) & A6XX_GMU_GPU_IDLE_STATUS_CX_GX_CPU_BUSY_IGN_AHB__MASK;
+}
+#define A6XX_GMU_OOB_BOOT_SLUMBER_SET_MASK__MASK		0x00400000
+#define A6XX_GMU_OOB_BOOT_SLUMBER_SET_MASK__SHIFT		22
+static inline uint32_t A6XX_GMU_OOB_BOOT_SLUMBER_SET_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_BOOT_SLUMBER_SET_MASK__SHIFT) & A6XX_GMU_OOB_BOOT_SLUMBER_SET_MASK__MASK;
+}
+#define A6XX_GMU_OOB_BOOT_SLUMBER_CHECK_MASK__MASK		0x40000000
+#define A6XX_GMU_OOB_BOOT_SLUMBER_CHECK_MASK__SHIFT		30
+static inline uint32_t A6XX_GMU_OOB_BOOT_SLUMBER_CHECK_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_BOOT_SLUMBER_CHECK_MASK__SHIFT) & A6XX_GMU_OOB_BOOT_SLUMBER_CHECK_MASK__MASK;
+}
+#define A6XX_GMU_OOB_BOOT_SLUMBER_CLEAR_MASK__MASK		0x40000000
+#define A6XX_GMU_OOB_BOOT_SLUMBER_CLEAR_MASK__SHIFT		30
+static inline uint32_t A6XX_GMU_OOB_BOOT_SLUMBER_CLEAR_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_BOOT_SLUMBER_CLEAR_MASK__SHIFT) & A6XX_GMU_OOB_BOOT_SLUMBER_CLEAR_MASK__MASK;
+}
+#define A6XX_GMU_OOB_DCVS_SET_MASK__MASK			0x00800000
+#define A6XX_GMU_OOB_DCVS_SET_MASK__SHIFT			23
+static inline uint32_t A6XX_GMU_OOB_DCVS_SET_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_DCVS_SET_MASK__SHIFT) & A6XX_GMU_OOB_DCVS_SET_MASK__MASK;
+}
+#define A6XX_GMU_OOB_DCVS_CHECK_MASK__MASK			0x80000000
+#define A6XX_GMU_OOB_DCVS_CHECK_MASK__SHIFT			31
+static inline uint32_t A6XX_GMU_OOB_DCVS_CHECK_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_DCVS_CHECK_MASK__SHIFT) & A6XX_GMU_OOB_DCVS_CHECK_MASK__MASK;
+}
+#define A6XX_GMU_OOB_DCVS_CLEAR_MASK__MASK			0x80000000
+#define A6XX_GMU_OOB_DCVS_CLEAR_MASK__SHIFT			31
+static inline uint32_t A6XX_GMU_OOB_DCVS_CLEAR_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_DCVS_CLEAR_MASK__SHIFT) & A6XX_GMU_OOB_DCVS_CLEAR_MASK__MASK;
+}
+#define A6XX_GMU_OOB_GPU_SET_MASK__MASK				0x00040000
+#define A6XX_GMU_OOB_GPU_SET_MASK__SHIFT			18
+static inline uint32_t A6XX_GMU_OOB_GPU_SET_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_GPU_SET_MASK__SHIFT) & A6XX_GMU_OOB_GPU_SET_MASK__MASK;
+}
+#define A6XX_GMU_OOB_GPU_CHECK_MASK__MASK			0x04000000
+#define A6XX_GMU_OOB_GPU_CHECK_MASK__SHIFT			26
+static inline uint32_t A6XX_GMU_OOB_GPU_CHECK_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_GPU_CHECK_MASK__SHIFT) & A6XX_GMU_OOB_GPU_CHECK_MASK__MASK;
+}
+#define A6XX_GMU_OOB_GPU_CLEAR_MASK__MASK			0x04000000
+#define A6XX_GMU_OOB_GPU_CLEAR_MASK__SHIFT			26
+static inline uint32_t A6XX_GMU_OOB_GPU_CLEAR_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_GPU_CLEAR_MASK__SHIFT) & A6XX_GMU_OOB_GPU_CLEAR_MASK__MASK;
+}
+#define A6XX_GMU_OOB_PERFCNTR_SET_MASK__MASK			0x00020000
+#define A6XX_GMU_OOB_PERFCNTR_SET_MASK__SHIFT			17
+static inline uint32_t A6XX_GMU_OOB_PERFCNTR_SET_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_PERFCNTR_SET_MASK__SHIFT) & A6XX_GMU_OOB_PERFCNTR_SET_MASK__MASK;
+}
+#define A6XX_GMU_OOB_PERFCNTR_CHECK_MASK__MASK			0x02000000
+#define A6XX_GMU_OOB_PERFCNTR_CHECK_MASK__SHIFT			25
+static inline uint32_t A6XX_GMU_OOB_PERFCNTR_CHECK_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_PERFCNTR_CHECK_MASK__SHIFT) & A6XX_GMU_OOB_PERFCNTR_CHECK_MASK__MASK;
+}
+#define A6XX_GMU_OOB_PERFCNTR_CLEAR_MASK__MASK			0x02000000
+#define A6XX_GMU_OOB_PERFCNTR_CLEAR_MASK__SHIFT			25
+static inline uint32_t A6XX_GMU_OOB_PERFCNTR_CLEAR_MASK(uint32_t val)
+{
+	return ((val) << A6XX_GMU_OOB_PERFCNTR_CLEAR_MASK__SHIFT) & A6XX_GMU_OOB_PERFCNTR_CLEAR_MASK__MASK;
+}
 #define A6XX_HFI_IRQ_MSGQ_MASK					0x00000001
-#define A6XX_HFI_IRQ_DSGQ_MASK					0x00000002
-#define A6XX_HFI_IRQ_BLOCKED_MSG_MASK				0x00000004
-#define A6XX_HFI_IRQ_CM3_FAULT_MASK				0x00800000
+#define A6XX_HFI_IRQ_DSGQ_MASK__MASK				0x00000002
+#define A6XX_HFI_IRQ_DSGQ_MASK__SHIFT				1
+static inline uint32_t A6XX_HFI_IRQ_DSGQ_MASK(uint32_t val)
+{
+	return ((val) << A6XX_HFI_IRQ_DSGQ_MASK__SHIFT) & A6XX_HFI_IRQ_DSGQ_MASK__MASK;
+}
+#define A6XX_HFI_IRQ_BLOCKED_MSG_MASK__MASK			0x00000004
+#define A6XX_HFI_IRQ_BLOCKED_MSG_MASK__SHIFT			2
+static inline uint32_t A6XX_HFI_IRQ_BLOCKED_MSG_MASK(uint32_t val)
+{
+	return ((val) << A6XX_HFI_IRQ_BLOCKED_MSG_MASK__SHIFT) & A6XX_HFI_IRQ_BLOCKED_MSG_MASK__MASK;
+}
+#define A6XX_HFI_IRQ_CM3_FAULT_MASK__MASK			0x00800000
+#define A6XX_HFI_IRQ_CM3_FAULT_MASK__SHIFT			23
+static inline uint32_t A6XX_HFI_IRQ_CM3_FAULT_MASK(uint32_t val)
+{
+	return ((val) << A6XX_HFI_IRQ_CM3_FAULT_MASK__SHIFT) & A6XX_HFI_IRQ_CM3_FAULT_MASK__MASK;
+}
 #define A6XX_HFI_IRQ_GMU_ERR_MASK__MASK				0x007f0000
 #define A6XX_HFI_IRQ_GMU_ERR_MASK__SHIFT			16
 static inline uint32_t A6XX_HFI_IRQ_GMU_ERR_MASK(uint32_t val)
@@ -204,6 +291,8 @@ static inline uint32_t A6XX_GMU_GPU_NAP_CTRL_SID(uint32_t val)
 #define REG_A6XX_GPU_GMU_CX_GMU_RPMH_POWER_STATE		0x000050ec
 
 #define REG_A6XX_GPU_GMU_CX_GMU_CX_FAL_INTF			0x000050f0
+
+#define REG_A6XX_GPU_GMU_CX_GMU_CX_FALNEXT_INTF			0x000050f1
 
 #define REG_A6XX_GPU_GMU_CX_GMU_PWR_COL_CP_MSG			0x00005100
 
@@ -351,6 +440,8 @@ static inline uint32_t A6XX_GMU_GPU_NAP_CTRL_SID(uint32_t val)
 #define REG_A6XX_GPU_CC_GX_GDSCR				0x00009c03
 
 #define REG_A6XX_GPU_CC_GX_DOMAIN_MISC				0x00009d42
+
+#define REG_A6XX_GPU_CPR_FSM_CTL				0x0000c001
 
 #define REG_A6XX_GPU_RSCC_RSC_STATUS0_DRV0			0x00000004
 

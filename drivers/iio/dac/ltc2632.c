@@ -38,9 +38,9 @@ struct ltc2632_chip_info {
 /**
  * struct ltc2632_state - driver instance specific data
  * @spi_dev:			pointer to the spi_device struct
- * @powerdown_cache_mask	used to show current channel powerdown state
- * @vref_mv			used reference voltage (internal or external)
- * @vref_reg		regulator for the reference voltage
+ * @powerdown_cache_mask:	used to show current channel powerdown state
+ * @vref_mv:			used reference voltage (internal or external)
+ * @vref_reg:		regulator for the reference voltage
  */
 struct ltc2632_state {
 	struct spi_device *spi_dev;
@@ -135,8 +135,8 @@ static ssize_t ltc2632_read_dac_powerdown(struct iio_dev *indio_dev,
 {
 	struct ltc2632_state *st = iio_priv(indio_dev);
 
-	return sprintf(buf, "%d\n",
-		       !!(st->powerdown_cache_mask & (1 << chan->channel)));
+	return sysfs_emit(buf, "%d\n",
+			  !!(st->powerdown_cache_mask & (1 << chan->channel)));
 }
 
 static ssize_t ltc2632_write_dac_powerdown(struct iio_dev *indio_dev,
@@ -362,7 +362,6 @@ static int ltc2632_probe(struct spi_device *spi)
 		}
 	}
 
-	indio_dev->dev.parent = &spi->dev;
 	indio_dev->name = dev_of_node(&spi->dev) ? dev_of_node(&spi->dev)->name
 						 : spi_get_device_id(spi)->name;
 	indio_dev->info = &ltc2632_info;

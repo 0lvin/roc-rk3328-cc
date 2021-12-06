@@ -7,7 +7,6 @@
 
 #include <linux/debugfs.h>
 #include <linux/delay.h>
-#include <linux/dma-buf.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/regulator/consumer.h>
@@ -202,22 +201,17 @@ int mipi_dbi_buf_copy(void *dst, struct drm_framebuffer *fb,
 {
 	struct drm_gem_object *gem = drm_gem_fb_get_obj(fb, 0);
 	struct drm_gem_cma_object *cma_obj = to_drm_gem_cma_obj(gem);
-	struct dma_buf_attachment *import_attach = gem->import_attach;
-	struct drm_format_name_buf format_name;
 	void *src = cma_obj->vaddr;
-	int ret = 0;
+	int ret;
 
-	if (import_attach) {
-		ret = dma_buf_begin_cpu_access(import_attach->dmabuf,
-					       DMA_FROM_DEVICE);
-		if (ret)
-			return ret;
-	}
+	ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
+	if (ret)
+		return ret;
 
 	switch (fb->format->format) {
 	case DRM_FORMAT_RGB565:
 		if (swap)
-			drm_fb_swab16(dst, src, fb, clip);
+			drm_fb_swab(dst, src, fb, clip, !gem->import_attach);
 		else
 			drm_fb_memcpy(dst, src, fb, clip);
 		break;
@@ -225,15 +219,13 @@ int mipi_dbi_buf_copy(void *dst, struct drm_framebuffer *fb,
 		drm_fb_xrgb8888_to_rgb565(dst, src, fb, clip, swap);
 		break;
 	default:
-		dev_err_once(fb->dev->dev, "Format is not supported: %s\n",
-			     drm_get_format_name(fb->format->format,
-						 &format_name));
+		drm_err_once(fb->dev, "Format is not supported: %p4cc\n",
+			     &fb->format->format);
 		return -EINVAL;
 	}
 
-	if (import_attach)
-		ret = dma_buf_end_cpu_access(import_attach->dmabuf,
-					     DMA_FROM_DEVICE);
+	drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
+
 	return ret;
 }
 EXPORT_SYMBOL(mipi_dbi_buf_copy);
@@ -268,7 +260,7 @@ static void mipi_dbi_fb_dirty(struct drm_framebuffer *fb, struct drm_rect *rect)
 	bool full;
 	void *tr;
 
-	if (!dbidev->enabled)
+	if (WARN_ON(!fb))
 		return;
 
 	if (!drm_dev_enter(fb->dev, &idx))
@@ -295,7 +287,7 @@ static void mipi_dbi_fb_dirty(struct drm_framebuffer *fb, struct drm_rect *rect)
 				   width * height * 2);
 err_msg:
 	if (ret)
-		dev_err_once(fb->dev->dev, "Failed to update display %d\n", ret);
+		drm_err_once(fb->dev, "Failed to update display %d\n", ret);
 
 	drm_dev_exit(idx);
 }
@@ -314,6 +306,9 @@ void mipi_dbi_pipe_update(struct drm_simple_display_pipe *pipe,
 	struct drm_plane_state *state = pipe->plane.state;
 	struct drm_rect rect;
 
+	if (!pipe->crtc.state->active)
+		return;
+
 	if (drm_atomic_helper_damage_merged(old_state, state, &rect))
 		mipi_dbi_fb_dirty(state->fb, &rect);
 }
@@ -325,9 +320,8 @@ EXPORT_SYMBOL(mipi_dbi_pipe_update);
  * @crtc_state: CRTC state
  * @plane_state: Plane state
  *
- * This function sets &mipi_dbi->enabled, flushes the whole framebuffer and
- * enables the backlight. Drivers can use this in their
- * &drm_simple_display_pipe_funcs->enable callback.
+ * Flushes the whole framebuffer and enables the backlight. Drivers can use this
+ * in their &drm_simple_display_pipe_funcs->enable callback.
  *
  * Note: Drivers which don't use mipi_dbi_pipe_update() because they have custom
  * framebuffer flushing, can't use this function since they both use the same
@@ -349,7 +343,6 @@ void mipi_dbi_enable_flush(struct mipi_dbi_dev *dbidev,
 	if (!drm_dev_enter(&dbidev->drm, &idx))
 		return;
 
-	dbidev->enabled = true;
 	mipi_dbi_fb_dirty(fb, &rect);
 	backlight_enable(dbidev->backlight);
 
@@ -390,12 +383,7 @@ void mipi_dbi_pipe_disable(struct drm_simple_display_pipe *pipe)
 {
 	struct mipi_dbi_dev *dbidev = drm_to_mipi_dbi_dev(pipe->crtc.dev);
 
-	if (!dbidev->enabled)
-		return;
-
 	DRM_DEBUG_KMS("\n");
-
-	dbidev->enabled = false;
 
 	if (dbidev->backlight)
 		backlight_disable(dbidev->backlight);
@@ -934,6 +922,59 @@ static int mipi_dbi_spi1_transfer(struct mipi_dbi *dbi, int dc,
 	return 0;
 }
 
+static int mipi_dbi_typec1_command_read(struct mipi_dbi *dbi, u8 *cmd,
+					u8 *data, size_t len)
+{
+	struct spi_device *spi = dbi->spi;
+	u32 speed_hz = min_t(u32, MIPI_DBI_MAX_SPI_READ_SPEED,
+			     spi->max_speed_hz / 2);
+	struct spi_transfer tr[2] = {
+		{
+			.speed_hz = speed_hz,
+			.bits_per_word = 9,
+			.tx_buf = dbi->tx_buf9,
+			.len = 2,
+		}, {
+			.speed_hz = speed_hz,
+			.bits_per_word = 8,
+			.len = len,
+			.rx_buf = data,
+		},
+	};
+	struct spi_message m;
+	u16 *dst16;
+	int ret;
+
+	if (!len)
+		return -EINVAL;
+
+	if (!spi_is_bpw_supported(spi, 9)) {
+		/*
+		 * FIXME: implement something like mipi_dbi_spi1e_transfer() but
+		 * for reads using emulation.
+		 */
+		dev_err(&spi->dev,
+			"reading on host not supporting 9 bpw not yet implemented\n");
+		return -EOPNOTSUPP;
+	}
+
+	/*
+	 * Turn the 8bit command into a 16bit version of the command in the
+	 * buffer. Only 9 bits of this will be used when executing the actual
+	 * transfer.
+	 */
+	dst16 = dbi->tx_buf9;
+	dst16[0] = *cmd;
+
+	spi_message_init_with_transfers(&m, tr, ARRAY_SIZE(tr));
+	ret = spi_sync(spi, &m);
+
+	if (!ret)
+		MIPI_DBI_DEBUG_COMMAND(*cmd, data, len);
+
+	return ret;
+}
+
 static int mipi_dbi_typec1_command(struct mipi_dbi *dbi, u8 *cmd,
 				   u8 *parameters, size_t num)
 {
@@ -941,7 +982,7 @@ static int mipi_dbi_typec1_command(struct mipi_dbi *dbi, u8 *cmd,
 	int ret;
 
 	if (mipi_dbi_command_is_read(dbi, *cmd))
-		return -EOPNOTSUPP;
+		return mipi_dbi_typec1_command_read(dbi, cmd, parameters, num);
 
 	MIPI_DBI_DEBUG_COMMAND(*cmd, parameters, num);
 

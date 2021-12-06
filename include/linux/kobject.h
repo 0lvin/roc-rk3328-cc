@@ -59,7 +59,6 @@ enum kobject_action {
 	KOBJ_OFFLINE,
 	KOBJ_BIND,
 	KOBJ_UNBIND,
-	KOBJ_MAX
 };
 
 struct kobject {
@@ -102,7 +101,6 @@ int kobject_init_and_add(struct kobject *kobj,
 
 extern void kobject_del(struct kobject *kobj);
 
-extern struct kobject * __must_check kobject_create(void);
 extern struct kobject * __must_check kobject_create_and_add(const char *name,
 						struct kobject *parent);
 

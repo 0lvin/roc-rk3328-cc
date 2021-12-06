@@ -23,7 +23,6 @@ obj-$(CONFIG_MIPS_ALCHEMY)	+= pci-alchemy.o
 obj-$(CONFIG_PCI_AR2315)	+= pci-ar2315.o
 obj-$(CONFIG_SOC_AR71XX)	+= pci-ar71xx.o
 obj-$(CONFIG_PCI_AR724X)	+= pci-ar724x.o
-obj-$(CONFIG_MIPS_PCI_VIRTIO)	+= pci-virtio-guest.o
 obj-$(CONFIG_PCI_XTALK_BRIDGE)	+= pci-xtalk-bridge.o
 #
 # These are still pretty much in the old state, watch, go blind.
@@ -57,10 +56,7 @@ obj-$(CONFIG_VICTOR_MPC30X)	+= fixup-mpc30x.o
 obj-$(CONFIG_ZAO_CAPCELLA)	+= fixup-capcella.o
 obj-$(CONFIG_MIKROTIK_RB532)	+= pci-rc32434.o ops-rc32434.o fixup-rc32434.o
 obj-$(CONFIG_CAVIUM_OCTEON_SOC) += pci-octeon.o pcie-octeon.o
-obj-$(CONFIG_CPU_XLR)		+= pci-xlr.o
-obj-$(CONFIG_CPU_XLP)		+= pci-xlp.o
 
 ifdef CONFIG_PCI_MSI
 obj-$(CONFIG_CAVIUM_OCTEON_SOC) += msi-octeon.o
-obj-$(CONFIG_CPU_XLP)		+= msi-xlp.o
 endif

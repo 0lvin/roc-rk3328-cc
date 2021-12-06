@@ -20,7 +20,7 @@
 static int arndale_rt5631_hw_params(struct snd_pcm_substream *substream,
 				    struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	int rfs, ret;
@@ -48,14 +48,14 @@ static int arndale_rt5631_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static struct snd_soc_ops arndale_rt5631_ops = {
+static const struct snd_soc_ops arndale_rt5631_ops = {
 	.hw_params = arndale_rt5631_hw_params,
 };
 
 static int arndale_wm1811_hw_params(struct snd_pcm_substream *substream,
 				    struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	unsigned int rfs, rclk;
 
@@ -80,7 +80,7 @@ static int arndale_wm1811_hw_params(struct snd_pcm_substream *substream,
 					rclk + 1, SND_SOC_CLOCK_IN);
 }
 
-static struct snd_soc_ops arndale_wm1811_ops = {
+static const struct snd_soc_ops arndale_wm1811_ops = {
 	.hw_params = arndale_wm1811_hw_params,
 };
 

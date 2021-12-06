@@ -13,6 +13,9 @@
 #include <net/protocol.h>
 #include <net/ipv6.h>
 #include <net/inet_common.h>
+#include <net/tcp.h>
+#include <net/udp.h>
+#include <net/gro.h>
 
 #include "ip6_offload.h"
 
@@ -177,10 +180,6 @@ static int ipv6_exthdrs_len(struct ipv6hdr *iph,
 	return len;
 }
 
-INDIRECT_CALLABLE_DECLARE(struct sk_buff *tcp6_gro_receive(struct list_head *,
-							   struct sk_buff *));
-INDIRECT_CALLABLE_DECLARE(struct sk_buff *udp6_gro_receive(struct list_head *,
-							   struct sk_buff *));
 INDIRECT_CALLABLE_SCOPE struct sk_buff *ipv6_gro_receive(struct list_head *head,
 							 struct sk_buff *skb)
 {
@@ -249,9 +248,9 @@ INDIRECT_CALLABLE_SCOPE struct sk_buff *ipv6_gro_receive(struct list_head *head,
 		 * memcmp() alone below is sufficient, right?
 		 */
 		 if ((first_word & htonl(0xF00FFFFF)) ||
-		    !ipv6_addr_equal(&iph->saddr, &iph2->saddr) ||
-		    !ipv6_addr_equal(&iph->daddr, &iph2->daddr) ||
-		    *(u16 *)&iph->nexthdr != *(u16 *)&iph2->nexthdr) {
+		     !ipv6_addr_equal(&iph->saddr, &iph2->saddr) ||
+		     !ipv6_addr_equal(&iph->daddr, &iph2->daddr) ||
+		     *(u16 *)&iph->nexthdr != *(u16 *)&iph2->nexthdr) {
 not_same_flow:
 			NAPI_GRO_CB(p)->same_flow = 0;
 			continue;
@@ -319,8 +318,6 @@ static struct sk_buff *ip4ip6_gro_receive(struct list_head *head,
 	return inet_gro_receive(head, skb);
 }
 
-INDIRECT_CALLABLE_DECLARE(int tcp6_gro_complete(struct sk_buff *, int));
-INDIRECT_CALLABLE_DECLARE(int udp6_gro_complete(struct sk_buff *, int));
 INDIRECT_CALLABLE_SCOPE int ipv6_gro_complete(struct sk_buff *skb, int nhoff)
 {
 	const struct net_offload *ops;

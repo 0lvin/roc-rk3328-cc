@@ -7,6 +7,7 @@
 #define _NVME_FC_DRIVER_H 1
 
 #include <linux/scatterlist.h>
+#include <linux/blk-mq.h>
 
 
 /*
@@ -497,6 +498,8 @@ struct nvme_fc_port_template {
 	int	(*xmt_ls_rsp)(struct nvme_fc_local_port *localport,
 				struct nvme_fc_remote_port *rport,
 				struct nvmefc_ls_rsp *ls_rsp);
+	void	(*map_queues)(struct nvme_fc_local_port *localport,
+			      struct blk_mq_queue_map *map);
 
 	u32	max_hw_queues;
 	u16	max_sgl_segments;
@@ -672,7 +675,7 @@ enum {
  * Values set by the LLDD indicating completion status of the FCP operation.
  * Must be set prior to calling the done() callback.
  * @transferred_length: amount of DATA_OUT payload data received by a
- *            a WRITEDATA operation. If not a WRITEDATA operation, value must
+ *            WRITEDATA operation. If not a WRITEDATA operation, value must
  *            be set to 0. Should equal transfer_length on success.
  * @fcp_error: status of the FCP operation. Must be 0 on success; on failure
  *            must be a NVME_SC_FC_xxxx value.
@@ -778,6 +781,10 @@ struct nvmet_fc_target_port {
  *       The transport will always call the xmt_ls_rsp() routine for any
  *       LS received.
  *       Entrypoint is Mandatory.
+ *
+ * @map_queues: This functions lets the driver expose the queue mapping
+ *	 to the block layer.
+ *       Entrypoint is Optional.
  *
  * @fcp_op:  Called to perform a data transfer or transmit a response.
  *       The nvmefc_tgt_fcp_req structure is the same LLDD-supplied

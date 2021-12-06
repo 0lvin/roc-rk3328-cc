@@ -16,11 +16,11 @@ properties:
   compatible:
     oneOf:
       - enum:
-        - ingenic,jz4740-nemc
-        - ingenic,jz4780-nemc
+          - ingenic,jz4740-nemc
+          - ingenic,jz4780-nemc
       - items:
-        - const: ingenic,jz4725b-nemc
-        - const: ingenic,jz4740-nemc
+          - const: ingenic,jz4725b-nemc
+          - const: ingenic,jz4740-nemc
 
   "#address-cells":
     const: 2
@@ -84,7 +84,7 @@ additionalProperties: false
 
 examples:
   - |
-    #include <dt-bindings/clock/jz4780-cgu.h>
+    #include <dt-bindings/clock/ingenic,jz4780-cgu.h>
     #include <dt-bindings/gpio/gpio.h>
     nemc: memory-controller@13410000 {
       compatible = "ingenic,jz4780-nemc";

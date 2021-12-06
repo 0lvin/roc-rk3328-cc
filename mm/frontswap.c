@@ -60,17 +60,21 @@ static u64 frontswap_succ_stores;
 static u64 frontswap_failed_stores;
 static u64 frontswap_invalidates;
 
-static inline void inc_frontswap_loads(void) {
-	frontswap_loads++;
+static inline void inc_frontswap_loads(void)
+{
+	data_race(frontswap_loads++);
 }
-static inline void inc_frontswap_succ_stores(void) {
-	frontswap_succ_stores++;
+static inline void inc_frontswap_succ_stores(void)
+{
+	data_race(frontswap_succ_stores++);
 }
-static inline void inc_frontswap_failed_stores(void) {
-	frontswap_failed_stores++;
+static inline void inc_frontswap_failed_stores(void)
+{
+	data_race(frontswap_failed_stores++);
 }
-static inline void inc_frontswap_invalidates(void) {
-	frontswap_invalidates++;
+static inline void inc_frontswap_invalidates(void)
+{
+	data_race(frontswap_invalidates++);
 }
 #else
 static inline void inc_frontswap_loads(void) { }
@@ -446,7 +450,7 @@ static int __frontswap_shrink(unsigned long target_pages,
 void frontswap_shrink(unsigned long target_pages)
 {
 	unsigned long pages_to_unuse = 0;
-	int uninitialized_var(type), ret;
+	int type, ret;
 
 	/*
 	 * we don't want to hold swap_lock while doing a very

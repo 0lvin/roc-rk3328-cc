@@ -5,6 +5,7 @@
 
 #include <linux/blkdev.h>
 #include <linux/sched/signal.h>
+#include <linux/backing-dev-defs.h>
 #include "fat.h"
 
 struct fatent_operations {
@@ -657,6 +658,9 @@ static void fat_ra_init(struct super_block *sb, struct fatent_ra *ra,
 	unsigned long ra_pages = sb->s_bdi->ra_pages;
 	unsigned int reada_blocks;
 
+	if (fatent->entry >= ent_limit)
+		return;
+
 	if (ra_pages > sb->s_bdi->io_pages)
 		ra_pages = rounddown(ra_pages, sb->s_bdi->io_pages);
 	reada_blocks = ra_pages << (PAGE_SHIFT - sb->s_blocksize_bits + 1);
@@ -768,7 +772,7 @@ int fat_trim_fs(struct inode *inode, struct fstrim_range *range)
 	/*
 	 * FAT data is organized as clusters, trim at the granulary of cluster.
 	 *
-	 * fstrim_range is in byte, convert vaules to cluster index.
+	 * fstrim_range is in byte, convert values to cluster index.
 	 * Treat sectors before data region as all used, not to trim them.
 	 */
 	ent_start = max_t(u64, range->start>>sbi->cluster_bits, FAT_START_ENT);

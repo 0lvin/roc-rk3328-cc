@@ -198,6 +198,7 @@ static void vgpu_gem_release(struct drm_i915_gem_object *gem_obj)
 }
 
 static const struct drm_i915_gem_object_ops intel_vgpu_gem_ops = {
+	.name = "i915_gem_object_vgpu",
 	.flags = I915_GEM_OBJECT_IS_PROXY,
 	.get_pages = vgpu_gem_get_pages,
 	.put_pages = vgpu_gem_put_pages,
@@ -217,12 +218,12 @@ static struct drm_i915_gem_object *vgpu_create_gem(struct drm_device *dev,
 
 	drm_gem_private_object_init(dev, &obj->base,
 		roundup(info->size, PAGE_SIZE));
-	i915_gem_object_init(obj, &intel_vgpu_gem_ops, &lock_class);
+	i915_gem_object_init(obj, &intel_vgpu_gem_ops, &lock_class, 0);
 	i915_gem_object_set_readonly(obj);
 
 	obj->read_domains = I915_GEM_DOMAIN_GTT;
 	obj->write_domain = 0;
-	if (INTEL_GEN(dev_priv) >= 9) {
+	if (GRAPHICS_VER(dev_priv) >= 9) {
 		unsigned int tiling_mode = 0;
 		unsigned int stride = 0;
 
