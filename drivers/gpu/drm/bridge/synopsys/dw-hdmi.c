@@ -660,7 +660,8 @@ static void hdmi_set_clk_regenerator(struct dw_hdmi *hdmi,
 	config3 = hdmi_readb(hdmi, HDMI_CONFIG3_ID);
 
 	/* Only compute CTS when using internal AHB audio */
-	if (config3 & HDMI_CONFIG3_AHBAUDDMA) {
+	/* broken hdmi sound on rk3328-roc-cc */
+	if (config3 & HDMI_CONFIG3_AHBAUDDMA || 1) {
 		/*
 		 * Compute the CTS value from the N value.  Note that CTS and N
 		 * can be up to 20 bits in total, so we need 64-bit math.  Also
@@ -3071,7 +3072,12 @@ static int dw_hdmi_detect_phy(struct dw_hdmi *hdmi)
 				DW_HDMI_PHY_VENDOR_PHY :
 				hdmi_readb(hdmi, HDMI_CONFIG2_ID);
 
-	if (phy_type == DW_HDMI_PHY_VENDOR_PHY) {
+	/*
+	 * RK3228 and RK3328 phy_type is DW_HDMI_PHY_DWC_HDMI20_TX_PHY,
+	 * but it has a vedor phy.
+	 */
+	if (phy_type == DW_HDMI_PHY_VENDOR_PHY || phy_type == DW_HDMI_PHY_DWC_HDMI20_TX_PHY)
+	{
 		/* Vendor PHYs require support from the glue layer. */
 		if (!hdmi->plat_data->phy_ops || !hdmi->plat_data->phy_name) {
 			dev_err(hdmi->dev,

@@ -1323,6 +1323,12 @@ config GPIO_RC5T583
 	  This driver provides the support for driving/reading the GPIO pins
 	  of RC5T583 device through standard GPIO library.
 
+config GPIO_RK8XX
+	tristate "Rockchip RK8XX gpio driver"
+	depends on MFD_RK808
+	help
+	  Select this option to enable the gpio module of Rockchip RK8XX PMIC.
+
 config GPIO_SL28CPLD
 	tristate "Kontron sl28cpld GPIO support"
 	depends on MFD_SL28CPLD || COMPILE_TEST

@@ -130,6 +130,7 @@ static const struct mfd_cell rk805s[] = {
 	{ .name = "rk808-clkout", },
 	{ .name = "rk808-regulator", },
 	{ .name = "rk805-pinctrl", },
+	{ .name = "rk8xx-gpio", },
 	{
 		.name = "rk808-rtc",
 		.num_resources = ARRAY_SIZE(rtc_resources),
