@@ -14,12 +14,8 @@
 #include <drm/drm_edid.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
-#include <linux/clk-provider.h>
-#include <linux/pm_runtime.h>
-#include <uapi/linux/videodev2.h>
 #include <drm/drm_simple_kms_helper.h>
 
-#include "../drm_crtc_helper_internal.h"
 #include "rockchip_drm_drv.h"
 #include "rockchip_drm_vop.h"
 
@@ -77,7 +73,6 @@ struct rockchip_hdmi {
 	struct clk *grf_clk;
 	struct dw_hdmi *hdmi;
 	struct phy *phy;
-	struct clk *hclk_vio;
 	struct clk *dclk;
 };
 
@@ -212,7 +207,6 @@ static const struct dw_hdmi_phy_config rockchip_phy_config[] = {
 static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
 {
 	struct device_node *np = hdmi->dev->of_node;
-	int ret;
 
 	hdmi->regmap = syscon_regmap_lookup_by_phandle(np, "rockchip,grf");
 	if (IS_ERR(hdmi->regmap)) {
@@ -240,16 +234,6 @@ static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
 		return PTR_ERR(hdmi->grf_clk);
 	}
 
-	hdmi->hclk_vio = devm_clk_get(hdmi->dev, "hclk_vio");
-	if (PTR_ERR(hdmi->hclk_vio) == -ENOENT) {
-		hdmi->hclk_vio = NULL;
-	} else if (PTR_ERR(hdmi->hclk_vio) == -EPROBE_DEFER) {
-		return -EPROBE_DEFER;
-	} else if (IS_ERR(hdmi->hclk_vio)) {
-		DRM_DEV_ERROR(hdmi->dev, "failed to get hclk_vio clock\n");
-		return PTR_ERR(hdmi->hclk_vio);
-	}
-
 	hdmi->dclk = devm_clk_get(hdmi->dev, "dclk");
 	if (PTR_ERR(hdmi->dclk) == -ENOENT) {
 		hdmi->dclk = NULL;
@@ -258,13 +242,6 @@ static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
 	} else if (IS_ERR(hdmi->dclk)) {
 		DRM_DEV_ERROR(hdmi->dev, "failed to get dclk\n");
 		return PTR_ERR(hdmi->dclk);
-	}
-
-	ret = clk_prepare_enable(hdmi->hclk_vio);
-	if (ret) {
-		DRM_DEV_ERROR(hdmi->dev, "Failed to eanble HDMI hclk_vio: %d\n",
-			ret);
-		return ret;
 	}
 
 	return 0;
