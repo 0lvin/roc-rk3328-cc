@@ -1369,6 +1369,24 @@ static const struct regulator_desc rk818_reg[] = {
 		RK818_DCDC_EN_REG, BIT(7)),
 };
 
+static int rk808_regulator_dt_parse_pdata(struct device *dev,
+				   struct device *client_dev,
+				   struct of_regulator_match *reg_matches,
+				   int regulator_nr)
+{
+	struct device_node *np;
+	int ret = 0;
+
+	np = of_get_child_by_name(client_dev->of_node, "regulators");
+	if (!np)
+		return -ENXIO;
+
+	ret = of_regulator_match(dev, np, reg_matches, regulator_nr);
+
+	of_node_put(np);
+	return ret;
+}
+
 static struct of_regulator_match rk805_reg_matches[] = {
 	[RK805_ID_DCDC1] = {
 		.name = "RK805_DCDC1",
@@ -1391,25 +1409,6 @@ static struct of_regulator_match rk805_reg_matches[] = {
 	[RK805_ID_LDO3]	= { .name = "RK805_LDO3", },
 };
 
-static int rk808_regulator_dt_parse_pdata(struct device *dev,
-				   struct device *client_dev,
-				   struct regmap *map,
-				   struct of_regulator_match *reg_matches,
-				   int regulator_nr)
-{
-	struct device_node *np;
-	int tmp, ret = 0, i;
-
-	np = of_get_child_by_name(client_dev->of_node, "regulators");
-	if (!np)
-		return -ENXIO;
-
-	ret = of_regulator_match(dev, np, reg_matches, regulator_nr);
-
-	of_node_put(np);
-	return ret;
-}
-
 static int rk808_regulator_probe(struct platform_device *pdev)
 {
 	struct rk808 *rk808 = dev_get_drvdata(pdev->dev.parent);
@@ -1417,7 +1416,6 @@ static int rk808_regulator_probe(struct platform_device *pdev)
 	struct regulator_config config = {};
 	struct regulator_dev *rk808_rdev;
 	struct rk808_regulator_data *pdata;
-	struct of_regulator_match *reg_matches;
 	const struct regulator_desc *regulators;
 	int ret, i, nregulators;
 
@@ -1430,7 +1428,6 @@ static int rk808_regulator_probe(struct platform_device *pdev)
 	switch (rk808->variant) {
 	case RK805_ID:
 		regulators = rk805_reg;
-		reg_matches = rk805_reg_matches;
 		nregulators = RK805_NUM_REGULATORS;
 		break;
 	case RK808_ID:
@@ -1456,21 +1453,21 @@ static int rk808_regulator_probe(struct platform_device *pdev)
 	}
 
 	ret = rk808_regulator_dt_parse_pdata(&pdev->dev, &client->dev,
-					     rk808->regmap, reg_matches, nregulators);
+					     rk805_reg_matches, nregulators);
 	if (ret < 0)
 		return ret;
 
 	/* Instantiate the regulators */
 	for (i = 0; i < nregulators; i++) {
-		if (!reg_matches[i].init_data ||
-		    !reg_matches[i].of_node)
+		if (!rk805_reg_matches[i].init_data ||
+		    !rk805_reg_matches[i].of_node)
 			continue;
 
 		config.driver_data = rk808;
 		config.dev = &client->dev;
 		config.regmap = rk808->regmap;
-		config.of_node = reg_matches[i].of_node;
-		config.init_data = reg_matches[i].init_data;
+		config.of_node = rk805_reg_matches[i].of_node;
+		config.init_data = rk805_reg_matches[i].init_data;
 		rk808_rdev = devm_regulator_register(&pdev->dev,
 						     &regulators[i], &config);
 		if (IS_ERR(rk808_rdev)) {
