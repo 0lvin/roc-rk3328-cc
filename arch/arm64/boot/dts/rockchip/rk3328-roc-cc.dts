@@ -260,11 +260,6 @@
 		};
 
 		regulators {
-			compatible = "rk805-regulator";
-			status = "okay";
-			#address-cells = <1>;
-			#size-cells = <0>;
-
 			vdd_logic: DCDC_REG1 {
 				regulator-compatible = "RK805_DCDC1";
 				regulator-name = "vdd_logic";
