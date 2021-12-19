@@ -194,11 +194,6 @@
 	status = "disabled";
 };
 
-&gpu {
-	status = "disabled";
-	mali-supply = <&vdd_logic>;
-};
-
 &hdmi {
 	#sound-dai-cells = <0>;
 	ddc-i2c-scl-high-time-ns = <9625>;

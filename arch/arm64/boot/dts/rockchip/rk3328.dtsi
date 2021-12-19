@@ -633,8 +633,6 @@
 		clocks = <&cru ACLK_GPU>, <&cru ACLK_GPU>;
 		clock-names = "bus", "core";
 		resets = <&cru SRST_GPU_A>;
-		#cooling-cells = <2>; /* min followed by max */
-		operating-points-v2 = <&gpu_opp_table>;
 	};
 
 	h265e_mmu: iommu@ff330200 {
@@ -655,34 +653,6 @@
 		clock-names = "aclk", "iface";
 		#iommu-cells = <0>;
 		status = "disabled";
-	};
-
-	gpu_opp_table: gpu-opp-table {
-		compatible = "operating-points-v2";
-
-		rockchip,leakage-voltage-sel = <
-			1   8     0
-			9   254   1
-		>;
-		nvmem-cells = <&logic_leakage>;
-		nvmem-cell-names = "gpu_leakage";
-
-		opp-200000000 {
-			opp-hz = /bits/ 64 <200000000>;
-			opp-microvolt = <925000>;
-		};
-		opp-300000000 {
-			opp-hz = /bits/ 64 <300000000>;
-			opp-microvolt = <975000>;
-		};
-		opp-400000000 {
-			opp-hz = /bits/ 64 <400000000>;
-			opp-microvolt = <1050000>;
-		};
-		opp-500000000 {
-			opp-hz = /bits/ 64 <500000000>;
-			opp-microvolt = <1125000>;
-		};
 	};
 
 	vpu: video-codec@ff350000 {
