@@ -73,19 +73,6 @@
 		regulator-always-on;
 	};
 
-	sound {
-		compatible = "simple-audio-card";
-		simple-audio-card,format = "i2s";
-		simple-audio-card,mclk-fs = <256>;
-		simple-audio-card,name = "rockchip,rk3328";
-		simple-audio-card,cpu {
-			sound-dai = <&i2s1>;
-		};
-		simple-audio-card,codec {
-			sound-dai = <&codec>;
-		};
-	};
-
 	vcc_sys: vcc-sys {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc_sys";
@@ -121,6 +108,10 @@
 			mode = <0x05>;
 		};
 	};
+};
+
+&analog_sound {
+	status = "okay";
 };
 
 &codec {

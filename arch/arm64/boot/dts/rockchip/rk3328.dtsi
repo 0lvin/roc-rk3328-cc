@@ -151,7 +151,7 @@
 		compatible = "simple-audio-card";
 		simple-audio-card,format = "i2s";
 		simple-audio-card,mclk-fs = <256>;
-		simple-audio-card,name = "Analog";
+		simple-audio-card,name = "rockchip,rk3328";
 		status = "disabled";
 
 		simple-audio-card,cpu {
