@@ -633,6 +633,7 @@
 		clocks = <&cru ACLK_GPU>, <&cru ACLK_GPU>;
 		clock-names = "bus", "core";
 		resets = <&cru SRST_GPU_A>;
+		status = "disabled";
 	};
 
 	h265e_mmu: iommu@ff330200 {
